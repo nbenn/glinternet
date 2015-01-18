@@ -1,0 +1,31 @@
+#!/bin/sh
+
+# Cleans up after the auxiliary files that were created when installing
+# glinternetFast
+#
+echo "  Cleaning up after installing glinternetFast"
+
+for f in config.log config.status ; do
+  if test -w $f ; then
+    rm $f
+  fi
+done
+
+CACHEDIR="autom4te.cache"
+
+if [ -d "$CACHEDIR" ]; then
+	rm -r "$CACHEDIR"
+fi
+
+for f in opari.rc opari.tab.c opari.tab.o ; do
+  if test -w $f ; then
+    rm $f
+  fi
+done
+
+cd src
+
+rm -f *.o *.so
+rm -f *.opari.inc *.mod.c
+rm -f opari.*
+rm -f Makefile

@@ -1,0 +1,18 @@
+PKG_CFLAGS =  @OPENMP_CFLAGS@
+PKG_LIBS   =  @OPENMP_CFLAGS@
+
+CC   = @CC@
+WARN = @WARNINGS@
+
+TARGET = glinternet.so
+
+SOURCES = $(shell echo *.c)
+OBJECTS = $(SOURCES:.c=.o)
+
+all: $(TARGET)
+
+.c.o:
+	$(CC) $(ALL_CPPFLAGS) $(ALL_CFLAGS) $(WARN) -c $< -o $@
+
+$(TARGET) : $(OBJECTS)
+	$(CC) $(SHLIB_LDFLAGS) -o $@ $^ $(LIBR) $(PKG_LIBS)
