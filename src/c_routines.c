@@ -414,7 +414,8 @@ void compute_norms_cat(int *restrict x, double *restrict r, int *restrict nRows,
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
 #endif
-# pragma omp parallel for shared(x, r, n, p, result) private(i, j, offset, len, temp)
+#pragma pomp inst begin(crout_compute_norms_cat)
+#pragma omp parallel for shared(x, r, n, p, result) private(i, j, offset, len, temp)
   for (j=0; j<p; j++){
     offset = j*n;
     len = numLevels[j];
@@ -428,6 +429,7 @@ void compute_norms_cat(int *restrict x, double *restrict r, int *restrict nRows,
     result[j] = sqrt(result[j]/n)/n;
     free(temp);
   }
+#pragma pomp inst end(crout_compute_norms_cat)
 }
 
 SEXP R_compute_norms_cat(SEXP R_x, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_numLevels, SEXP R_numCores, SEXP R_result){
@@ -459,7 +461,8 @@ void compute_norms_cat_cat(int *restrict x, double *restrict r, int *restrict nR
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
 #endif
-# pragma omp parallel for shared(x, r, n, p, numLevels, xIndices, yIndices, result) private(i, j, xOffset, yOffset, len, xlevels, temp)
+#pragma pomp inst begin(crout_compute_norms_cat_cat)
+#pragma omp parallel for shared(x, r, n, p, numLevels, xIndices, yIndices, result) private(i, j, xOffset, yOffset, len, xlevels, temp)
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;  //R uses 1-based indexing
     yOffset = (yIndices[j] - 1)*n;
@@ -475,6 +478,7 @@ void compute_norms_cat_cat(int *restrict x, double *restrict r, int *restrict nR
     result[j] = sqrt(result[j]/n)/n;
     free(temp);
   }
+#pragma pomp inst end(crout_compute_norms_cat_cat)
 }
 
 SEXP R_compute_norms_cat_cat(SEXP R_x, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_numLevels, SEXP R_xIndices, SEXP R_yIndices, SEXP R_numCores, SEXP R_result){
@@ -510,7 +514,8 @@ void compute_norms_cat_cont(int *restrict x, double *restrict z, double *restric
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
 #endif
-# pragma omp parallel for shared(x, z, catNorms, r, n, p, numLevels, xIndices, zIndices, result) private(i, j, xOffset, zOffset, levels, temp)
+#pragma pomp inst begin(crout_compute_norms_cat_cont)
+#pragma omp parallel for shared(x, z, catNorms, r, n, p, numLevels, xIndices, zIndices, result) private(i, j, xOffset, zOffset, levels, temp)
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;
     zOffset = (zIndices[j] - 1)*n;
@@ -526,6 +531,7 @@ void compute_norms_cat_cont(int *restrict x, double *restrict z, double *restric
     result[j] = sqrt(result[j]/2)/n;
     free(temp);
   }
+#pragma pomp inst end(crout_compute_norms_cat_cont)
 }
 
 SEXP R_compute_norms_cat_cont(SEXP R_x, SEXP R_z, SEXP R_catNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_numLevels, SEXP R_xIndices, SEXP R_zIndices, SEXP R_numCores, SEXP R_result){
@@ -566,7 +572,8 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
 #endif
-# pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
+#pragma pomp inst begin(crout_compute_norms_cont_cont)
+#pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;
     yOffset = (yIndices[j] - 1)*n;
@@ -586,6 +593,7 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
     result[j] = sqrt(result[j]/3)/n;
     free(product);
   }
+#pragma pomp inst end(crout_compute_norms_cont_cont)
 }
 
 SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, Rboolean verbose, SEXP R_numCores, SEXP R_result){

@@ -16,6 +16,7 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   int *restrict xOffsetPtr;
   double *restrict zOffsetPtr;
   double factor;
+#pragma pomp inst begin(fista_x_times_beta)
   /* categorical */
   if (pCat > 0){
     factor = sqrt(n);
@@ -149,11 +150,13 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
       offset += 2*nLevels;
     }
   }
+#pragma pomp inst end(fista_x_times_beta)
 }
 
 double compute_loglik(const double *restrict y, const double *restrict linear, const double *restrict intercept, const int *restrict nRows, const int *restrict family){
   double result = 0.0, mu = *intercept;
   int i, n = *nRows;
+#pragma pomp inst begin(fista_compute_loglik)
   if (*family == 0){
     for (i=0; i<n; i++){
       result += pow(y[i]-mu-linear[i], 2);
@@ -166,12 +169,14 @@ double compute_loglik(const double *restrict y, const double *restrict linear, c
     }
     result /= n;
   }
+#pragma pomp inst end(fista_compute_loglik)
   return result;
 }
 
 void compute_objective(const double *restrict y, const double *restrict res, const double *restrict linear, const double *restrict intercept, const double *restrict beta, const int *restrict nRows, const int *restrict numGroups, const int *restrict groupSizes, const double *restrict lambda, double *restrict objValue, const int *restrict family){
   int i, j, size, n = *nRows, numgroups = *numGroups, offset = 0;
   double loglik = 0.0, penalty = 0.0, mu = *intercept, temp;
+#pragma pomp inst begin(fista_compute_objective)
   if (*family == 0){
     for (i=0; i<n; i++) loglik += res[i]*res[i];
     loglik /= (2*n);
@@ -190,6 +195,7 @@ void compute_objective(const double *restrict y, const double *restrict res, con
     offset += size;
   }
   *objValue = loglik + penalty*(*lambda);
+#pragma pomp inst end(fista_compute_objective)
 }
 
 void compute_gradient(int *restrict x, double *restrict z, double *restrict r, int *restrict nRows, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict gradient){
@@ -199,6 +205,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
   int *restrict xOffsetPtr;
   double *restrict zOffsetPtr;
   double factor;
+#pragma pomp inst begin(fista_compute_gradient)
   /* categorical */
   if (pCat > 0){
     factor = sqrt(n);
@@ -300,11 +307,13 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
   for (i=0; i<offset; i++){
     gradient[i] /= -n;
   }
+#pragma pomp inst end(fista_compute_gradient)
 }
 
 void compute_group_info(const int *nVars, const int *restrict numLevels, const int *restrict catIndices, const int *restrict contIndices, const int *restrict catcatIndices, const int *restrict contcontIndices, const int *restrict catcontIndices, int *length, int *groupSizes){
   int pCat=nVars[0], pCont=nVars[1], pCatCat=2*nVars[2], pContCont=2*nVars[3], pCatCont=2*nVars[4];
   int p, counter = 0, len = 0;
+#pragma pomp inst begin(fista_compute_group_info)
   if (pCat > 0){
     for (p=0; p<pCat; p++){
       groupSizes[counter] = numLevels[catIndices[p]-1];
@@ -336,12 +345,14 @@ void compute_group_info(const int *nVars, const int *restrict numLevels, const i
     }
   }
   *length = len;
+#pragma pomp inst end(fista_compute_group_info)
 }
 
 void compute_update(const double *restrict beta, double *restrict betaUpdated, const double *restrict gradient, const int *restrict groupSizes, const int *restrict numGroups, const double *restrict stepsize, const double *restrict lambda){
   int i, j, size, offset = 0, numgroups = *numGroups;
   double step = *stepsize, factor = step * (*lambda);
   double norm;
+#pragma pomp inst begin(fista_compute_update)
   for (i=0; i<numgroups; i++){
     size = groupSizes[i];
     norm = 0.0;
@@ -355,6 +366,7 @@ void compute_update(const double *restrict beta, double *restrict betaUpdated, c
     }
     offset += size;
   }
+#pragma pomp inst end(fista_compute_update)
 }
 
 void optimize_step(int *restrict x, double *restrict z, const double *restrict y, const double *restrict residual, double *restrict linear, int *restrict nRows, int *restrict numGroups, int *restrict groupSizes, int *restrict gradientLength, const double *restrict intercept, double *restrict beta, double *restrict betaUpdated, const double *restrict gradient, double *restrict stepsize, const double *restrict lambda, const double *restrict alpha, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, const int *restrict family){
@@ -366,6 +378,7 @@ void optimize_step(int *restrict x, double *restrict z, const double *restrict y
   double gradientTimesDelta, deltaTimesDelta;
   double factor = *alpha;
   double mu = 0.0;
+#pragma pomp inst begin(fista_optimize_step)
   while (1){
     gradientTimesDelta = 0.0;
     deltaTimesDelta = 0.0;
@@ -389,6 +402,7 @@ void optimize_step(int *restrict x, double *restrict z, const double *restrict y
   }
   *stepsize = step;
   free(delta);
+#pragma pomp inst end(fista_optimize_step)
 }
 
 int check_convergence(const double *restrict beta, const double *restrict gradient, const int *restrict groupSizes, const int *restrict numGroups, const double *restrict lambda, const double *restrict tol){
@@ -421,15 +435,18 @@ int check_convergence(const double *restrict beta, const double *restrict gradie
 double update_theta(const double *restrict beta, const double *restrict intermediate, const double *restrict intermediateOld, const int gradientLength, const double theta){
   int i;
   double value = 0.0;
+#pragma pomp inst begin(fista_update_theta)
   for (i=0; i<gradientLength; i++){
     value += (beta[i]-intermediate[i]) * (intermediate[i]-intermediateOld[i]);
   }
+#pragma pomp inst end(fista_update_theta)
   return value > 0.0 ? 1.0 : theta;
 }
 
 void update_intercept(const double *restrict y, const int *restrict nRows, const double *restrict linear, double *restrict intercept, double *restrict residual, const int *restrict family){
   int i, n = *nRows;
   double residualMean = 0.0, mu = *intercept;
+#pragma pomp inst begin(fista_update_intercept)
   if (*family == 0){
     for (i=0; i<n; i++){
       residual[i] = y[i] - mu - linear[i];
@@ -481,19 +498,23 @@ void update_intercept(const double *restrict y, const int *restrict nRows, const
     free(temp);
     free(exponent);
   }
+#pragma pomp inst end(fista_update_intercept)
 }      
 
 double compute_stepsize(const double *restrict gradient, const double *restrict gradientOld, const double *restrict beta, const double *restrict betaOld, const int gradientLength){
   int i;
   double normBeta = 0.0, normGradient = 0.0;
+#pragma pomp inst begin(fista_compute_stepsize)
   for (i=0; i<gradientLength; i++){
     normBeta += (beta[i]-betaOld[i])*(beta[i]-betaOld[i]);
     normGradient += (gradient[i]-gradientOld[i])*(gradient[i]-gradientOld[i]);
   }
+#pragma pomp inst end(fista_compute_stepsize)
   return sqrt(normBeta/normGradient);
 }
 
 void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, double *restrict objValue, double *restrict steps, int *restrict family, Rboolean verbose){
+#pragma pomp inst begin(fista_gl_solver)
   /* initialize required variables */
   struct timespec timer_x_times_beta,
                   timer_compute_gradient,
@@ -593,6 +614,7 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
   free(intermediateOld);
   free(betaOld);
   free(gradientOld);
+#pragma pomp inst end(fista_gl_solver)
 }
 
 SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_residual, SEXP R_linear, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_convergedFlag, SEXP R_objValue, SEXP R_steps, SEXP R_family, Rboolean verbose){
