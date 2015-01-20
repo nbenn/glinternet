@@ -1,4 +1,4 @@
-check_kkt = function(X, Z, res, n, pCat, pCont, numLevels, candidates, activeSet, lambda, numCores=1){
+check_kkt = function(X, Z, res, n, pCat, pCont, numLevels, candidates, activeSet, lambda, verbose=FALSE, numCores=1){
 
   norms = vector("list", 5)
   names(norms) = c("cat", "cont", "catcat", "contcont", "catcont")
@@ -10,7 +10,7 @@ check_kkt = function(X, Z, res, n, pCat, pCont, numLevels, candidates, activeSet
   }
   if (pCont > 0){
     norms$cont = compute_norms_cont(Z, res, n)
-    if (!is.null(candidates$variables$contcont)) norms$contcont = compute_norms_cont_cont(Z, norms$cont, res, n, candidates$variables$contcont, numCores)
+    if (!is.null(candidates$variables$contcont)) norms$contcont = compute_norms_cont_cont(Z, norms$cont, res, n, candidates$variables$contcont, verbose, numCores)
   }
   if (!is.null(candidates$variables$catcont)) norms$catcont = compute_norms_cat_cont(X, Z, norms$cat, res, n, numLevels, candidates$variables$catcont, numCores)
 

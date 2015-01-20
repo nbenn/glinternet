@@ -1,4 +1,4 @@
-useDynLib("glinternet")
+useDynLib("glinternet0.mint")
 export(glinternet, glinternet.cv)
 
 S3method("print", "glinternet")

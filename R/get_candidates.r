@@ -1,4 +1,4 @@
-get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, screenLimit=NULL, activeSet=NULL, norms=NULL, numCores=1){
+get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, screenLimit=NULL, activeSet=NULL, norms=NULL, verbose=FALSE, numCores=1){
 
   labels = c("cat", "cont", "catcat", "contcont", "catcont")
   candidates = list()
@@ -43,7 +43,7 @@ get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, screenLimit=NULL
 
   #get interaction norms
   if (!is.null(candidates$variables$catcat)) candidates$norms$catcat = compute_norms_cat_cat(X, res, n, numLevels, candidates$variables$catcat, numCores)
-  if (!is.null(candidates$variables$contcont)) candidates$norms$contcont = compute_norms_cont_cont(Z, candidates$norms$cont, res, n, candidates$variables$contcont, numCores)
+  if (!is.null(candidates$variables$contcont)) candidates$norms$contcont = compute_norms_cont_cont(Z, candidates$norms$cont, res, n, candidates$variables$contcont, verbose, numCores)
   if (!is.null(candidates$variables$catcont)) candidates$norms$catcont = compute_norms_cat_cont(X, Z, candidates$norms$cat, res, n, numLevels, candidates$variables$catcont, numCores)
   
   return(candidates)

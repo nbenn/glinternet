@@ -1,4 +1,4 @@
-glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0.01, screenLimit=NULL, numToFind=NULL, family=c("gaussian", "binomial"), tol=1e-5, maxIter=5000, verbose=FALSE, numCores=1){
+glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0.01, screenLimit=NULL, numToFind=NULL, family=c("gaussian", "binomial"), tol=1e-5, maxIter=5000, verbose=FALSE, numCores=1, filename=NA){
 
                                         #get call and family
   thisCall = match.call()
@@ -26,7 +26,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   
                                         #compute variable norms
   res = Y - mean(Y)
-  candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, numCores=numCores)
+  candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, verbose, numCores=numCores)
  
  
                                         #lambda grid if not user provided
@@ -41,6 +41,10 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
       nLambda = 2
     }
   }
+
+  if (verbose) {
+    cat("lambda sequence:\n", lambda, "\n\n")
+  }
   
                                         #initialize storage for results
   fitted = matrix(mean(Y), n, nLambda)
@@ -52,31 +56,62 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
 
                                         #ever-active set + sequential strong rules + group lasso
   for (i in 2:nLambda){
-    if (verbose) cat("lambda ", i, ": ", lambda[i], "\n")
+    if (verbose) {
+      cat("-> lambda ", i, ": ", lambda[i], "\n")
+      time.lambda <- proc.time()
+    }
     activeSet[[i]] = strong_rules(candidates, lambda[i], lambda[i-1])
     betahat[[i]] = initialize_betahat(activeSet[[i]], activeSet[[i-1]], betahat[[i-1]], levels)
     while (TRUE){
       #group lasso on strong set
-      solution = group_lasso(Xcat, Z, Y, activeSet[[i]], betahat[[i]], levels, lambda[i], family, tol, maxIter)
+      if (verbose) time.gl <- proc.time()  
+      solution = group_lasso(Xcat, Z, Y, activeSet[[i]], betahat[[i]], levels, lambda[i], family, tol, maxIter, verbose)
+      if (verbose) {
+        time.gl <- proc.time() - time.gl
+        cat("--> time group lasso: ", time.gl[1], "(user)\n",
+          rep(" ", 11), time.gl[3], "(elapsed)\n")
+      }
       activeSet[[i]] = solution$activeSet
       betahat[[i]] = solution$betahat
       res = solution$res
       objValue[i] = solution$objValue
       #check kkt conditions on the rest
-      check = check_kkt(Xcat, Z, res, n, pCat, pCont, levels, candidates, activeSet[[i]], lambda[i], numCores)
+      if (verbose) time.kkt <- proc.time()  
+      check = check_kkt(Xcat, Z, res, n, pCat, pCont, levels, candidates, activeSet[[i]], lambda[i], verbose, numCores)
+      if (verbose) {
+        time.kkt <- proc.time() - time.kkt
+        cat("--> time check kkt: ", time.kkt[1], "(user)\n",
+          rep(" ", 10), time.kkt[3], "(elapsed)\n")
+      }
       candidates$norms = check$norms
       if (check$flag) break
       betahat[[i]] = initialize_betahat(check$activeSet, activeSet[[i]], betahat[[i]], levels)
       activeSet[[i]] = check$activeSet
     }
     #update the candidate set if necessary
-    if (!is.null(screenLimit) && (screenLimit<pCat+pCont) && i<nLambda) candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, activeSet[[i]], candidates$norms, numCores)
+    if (!is.null(screenLimit) && (screenLimit<pCat+pCont) && i<nLambda) {
+      if (verbose) time.candidates <- proc.time()  
+      candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, activeSet[[i]], candidates$norms, verbose, numCores)
+      if (verbose) {
+        time.candidates <- proc.time() - time.candidates
+        cat("-> time candidates: ", time.candidates[1], "(user)\n",
+          rep(" ", 10), time.candidates[3], "(elapsed)\n")
+      }
+    }
     #get fitted values
     fitted[, i] = Y - res
     #compute total number of interactions found
     if (!is.null(numToFind)){
       numFound = sum(sapply(activeSet[[i]][3:5], function(x) ifelse(is.null(x), 0, nrow(x))))
       if (numFound >= numToFind) break
+    }
+    if (verbose & !is.na(filename)) {
+      saveRDS(activeSet, paste(filename, "-activeSet.rds", sep=""))
+    }
+    if (verbose) {
+      time.lambda <- proc.time() - time.lambda
+      cat("-> total time: ", time.lambda[1], "(user)\n",
+        rep(" ", 7), time.lambda[3], "(elapsed)\n\n")
     }
   }
 

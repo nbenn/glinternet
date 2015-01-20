@@ -1,3 +1,5 @@
+#include "util.h"
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -491,8 +493,14 @@ double compute_stepsize(const double *restrict gradient, const double *restrict 
   return sqrt(normBeta/normGradient);
 }
 
-void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, double *restrict objValue, double *restrict steps, int *restrict family){
+void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, double *restrict objValue, double *restrict steps, int *restrict family, Rboolean verbose){
   /* initialize required variables */
+  struct timespec timer_x_times_beta,
+                  timer_compute_gradient,
+                  timer_optimize_step;
+  double accum_timer_x_times_beta = 0;
+  double accum_timer_compute_gradient = 0;
+  double accum_timer_optimize_step = 0;
   int i, gradientLength, iter, converged, n = *nRows;
   int numGroups = nVars[0] + nVars[1] + nVars[2] + nVars[3] + nVars[4];
   int *restrict groupSizes = malloc(numGroups * sizeof *groupSizes);
@@ -506,7 +514,13 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
   double *restrict betaOld = malloc(gradientLength * sizeof *betaOld);
   double *restrict gradientOld = malloc(gradientLength * sizeof *gradientOld);
   /* compute residual from initialized beta */
+  if (verbose) {
+    timer_x_times_beta = timer_start();
+  }
   x_times_beta(x, z, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+  if (verbose) {
+    Rprintf("---> timer (x_times_beta): %lf [s]\n", timer_end(timer_x_times_beta));
+  }
   update_intercept(y, nRows, linear, intercept, residual, family);
   /* start accelerated FISTA */
   iter = 0;
@@ -516,7 +530,13 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
     /* compute gradient */
     memcpy(gradientOld, gradient, gradientLength * sizeof *gradient);
     memset(gradient, 0, gradientLength * sizeof *gradient);
+    if (verbose) {
+      timer_compute_gradient = timer_start();
+    }
     compute_gradient(x, z, residual, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, gradient);
+    if (verbose) {
+      accum_timer_compute_gradient += timer_end(timer_compute_gradient);
+    }
     /* check convergence */
     converged = check_convergence(beta, gradient, groupSizes, &numGroups, lambda, tol);
     if (converged){
@@ -526,7 +546,13 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
     /* compute intermediate update and stepsize */
     memcpy(intermediateOld, intermediate, gradientLength * sizeof *intermediate);
     stepsize = iter > 0 ? compute_stepsize(gradient, gradientOld, beta, betaOld, gradientLength) : 1.0;
+    if (verbose) {
+      timer_optimize_step = timer_start();
+    }
     optimize_step(x, z, y, residual, linear, nRows, &numGroups, groupSizes, &gradientLength, intercept, beta, intermediate, gradient, &stepsize, lambda, alpha, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, family);
+    if (verbose) {
+      accum_timer_optimize_step += timer_end(timer_optimize_step);
+    }
     /* check if restart required  and update theta*/
     thetaOld = update_theta(beta, intermediate, intermediateOld, gradientLength, theta);
     /* update momentum */
@@ -539,12 +565,26 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
     }
     /* update residual and mu */
     memset(linear, 0, n * sizeof *linear);
+    if (verbose) {
+      timer_x_times_beta = timer_start();
+    }
     x_times_beta(x, z, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+    if (verbose) {
+      accum_timer_x_times_beta += timer_end(timer_x_times_beta);
+    }
     update_intercept(y, nRows, linear, intercept, residual, family);
     /* update iteration count */
     //compute_objective(y, residual, linear, intercept, beta, nRows, &numGroups, groupSizes, lambda, objValue+iter, family);
     steps[iter] = stepsize;
     ++iter;
+  }
+  if (verbose) {
+    Rprintf("---> %d iterations:\n     compute_gradient: %lf\n     optimize_step:    %lf\n     x_times_beta:     %lf\n", 
+      iter,
+      accum_timer_compute_gradient,
+      accum_timer_optimize_step,
+      accum_timer_x_times_beta
+    );
   }
   compute_objective(y, residual, linear, intercept, beta, nRows, &numGroups, groupSizes, lambda, objValue, family);
   free(groupSizes);
@@ -555,7 +595,7 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
   free(gradientOld);
 }
 
-SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_residual, SEXP R_linear, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_convergedFlag, SEXP R_objValue, SEXP R_steps, SEXP R_family){
+SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_residual, SEXP R_linear, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_convergedFlag, SEXP R_objValue, SEXP R_steps, SEXP R_family, Rboolean verbose){
   PROTECT(R_x = coerceVector(R_x, INTSXP));
   PROTECT(R_z = coerceVector(R_z, REALSXP));
   PROTECT(R_y = coerceVector(R_y, REALSXP));
@@ -602,7 +642,7 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   double *restrict objValue = REAL(R_objValue);
   double *restrict steps = REAL(R_steps);
   int *restrict family = INTEGER(R_family);
-  gl_solver(x, z, y, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family);
+  gl_solver(x, z, y, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family, verbose);
   UNPROTECT(23);
   SEXP result = PROTECT(allocVector(VECSXP, 4));
   SET_VECTOR_ELT(result, 0, R_intercept);
