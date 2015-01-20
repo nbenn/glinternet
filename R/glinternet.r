@@ -12,7 +12,10 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   if (family=="binomial" && !all(Y %in% 0:1)) stop("Error:family=binomial but Y not in {0,1}")
 
                                         #separate into categorical and continuous parts
-  if (pCont > 0) Z = as.matrix(apply(as.matrix(X[, numLevels == 1]), 2, standardize))
+  if (pCont > 0) {
+    #Z = as.matrix(apply(as.matrix(X[, numLevels == 1]), 2, standardize))
+    Z = .Call("alloc_z", n, pCont, X, cpuNodeInfo)
+  }
   else Z = NULL
   if (pCat > 0){
     catIndices = which(numLevels > 1)
@@ -25,7 +28,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
   
                                         #compute variable norms
-  res = Y - mean(Y)
+  res = .Call("alloc_res", Y)
   candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, verbose, numCores=numCores)
  
  
@@ -73,7 +76,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
       }
       activeSet[[i]] = solution$activeSet
       betahat[[i]] = solution$betahat
-      res = solution$res
+      res = .Call("copy_vec", solution$res, res)
       objValue[i] = solution$objValue
       #check kkt conditions on the rest
       if (verbose) time.kkt <- proc.time()  

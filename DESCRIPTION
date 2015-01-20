@@ -1,4 +1,4 @@
-Package: glinternet0.mint
+Package: glinternet1.single
 Type: Package
 Title: Learning interactions via hierarchical group-lasso
         regularization
