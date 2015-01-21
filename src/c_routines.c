@@ -8,6 +8,7 @@
 #ifdef _OPENMP
 # include <omp.h>
 #endif
+#include <x86intrin.h>
 
 static const double eps = 0.0;
 
@@ -576,11 +577,11 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
 #endif
 #pragma pomp inst begin(crout_compute_norms_cont_cont)
 #ifdef __AVX__
-  if(max_alignment(x) < 64) {
-    Rf_error("alignment of x is %d; need at least 64bit alignment", max_alignment(x));
+  if(max_alignment((uintptr_t)x) < 64) {
+    Rf_error("alignment of x is %d; need at least 64 byte alignment", max_alignment((uintptr_t)x));
   }
-  if(max_alignment(r) < 64) {
-    Rf_error("alignment of r is %d; need at least 64bit alignment", max_alignment(r));
+  if(max_alignment((uintptr_t)r) < 64) {
+    Rf_error("alignment of r is %d; need at least 64 byte alignment", max_alignment((uintptr_t)r));
   }
   int nRowsDiv8 = n/8;
 #pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
@@ -646,11 +647,11 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
     result[i] = sqrt(result[i]/3)/n;
   }
 #else
-  if(max_alignment(x) < 32) {
-    Rf_error("alignment of x is %d; need at least 32bit alignment", max_alignment(x));
+  if(max_alignment((uintptr_t)x) < 32) {
+    Rf_error("alignment of x is %d; need at least 32 byte alignment", max_alignment((uintptr_t)x));
   }
-  if(max_alignment(r) < 32) {
-    Rf_error("alignment of r is %d; need at least 32bit alignment", max_alignment(r));
+  if(max_alignment((uintptr_t)r) < 32) {
+    Rf_error("alignment of r is %d; need at least 32 byte alignment", max_alignment((uintptr_t)r));
   }
   int nRowsDiv2 = n/2;
 #pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)

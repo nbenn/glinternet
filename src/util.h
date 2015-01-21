@@ -6,6 +6,15 @@
 #include <time.h>
 #include <Rinternals.h>
 #include <R_ext/Rallocators.h>
+#include <stdint.h>
+
+static inline int max_alignment(uintptr_t pointer) {
+  int alignment = 2;
+  while(pointer % alignment == 0) {
+    alignment *= 2;
+  }
+  return alignment/2;
+}
 
 struct timespec timer_start();
 double timer_end(struct timespec);

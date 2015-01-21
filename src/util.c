@@ -2,9 +2,9 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
-#include <stdint.h>
 
 typedef struct allocator_data {
+    size_t offset;
     size_t alignment;
 } allocator_data;
 
@@ -36,22 +36,31 @@ void custom_free(R_allocator_t *allocator, void * addr) {
 }
 
 SEXP alloc(int alignment, R_xlen_t length) {
-  allocator_data* aligned_allocator_data = malloc(sizeof(allocator_data));
-  aligned_allocator_data->alignment = alignment;
+  allocator_data* custom_allocator_data = malloc(sizeof(allocator_data));
+  custom_allocator_data->offset = 56;
+  custom_allocator_data->alignment = alignment;
 
-  R_allocator_t* aligned_allocator = malloc(sizeof(R_allocator_t));
-  aligned_allocator->mem_alloc = &custom_alloc;
-  aligned_allocator->mem_free = &custom_free;
-  aligned_allocator->res = NULL;
-  aligned_allocator->data = aligned_allocator_data;
+  R_allocator_t* custom_allocator = malloc(sizeof(R_allocator_t));
+  custom_allocator->mem_alloc = &custom_alloc;
+  custom_allocator->mem_free = &custom_free;
+  custom_allocator->res = NULL;
+  custom_allocator->data = custom_allocator_data;
 
-  SEXP result = PROTECT(allocVector3(REALSXP, length, aligned_allocator));
+  SEXP result = PROTECT(allocVector3(REALSXP, length, custom_allocator));
 
   uintptr_t addr = (uintptr_t)REAL(result);
 
-  if (addr % aligned_allocator_data->alignment != 0) {
-    Rf_error("allocating %f [MB] of memory aligned to a %d byte boundary failed", 
-      length*sizeof(double)/(1024*1024), alignment);
+  while (max_alignment(addr) < custom_allocator_data->alignment) {
+    uintptr_t new_addr = addr;
+    Rprintf("address : %p\nmax alig: %d\n--> repeating allocation.\n",
+      addr, max_alignment(addr));
+    while (max_alignment(new_addr) < custom_allocator_data->alignment) {
+      new_addr += sizeof(double);
+    }
+    custom_allocator_data->offset = custom_allocator_data->offset + (new_addr - addr);
+    UNPROTECT(1);
+    result = PROTECT(allocVector3(REALSXP, length, custom_allocator));
+    addr = (uintptr_t)REAL(result);
   }
 
   UNPROTECT(1);
