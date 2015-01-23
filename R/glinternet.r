@@ -13,8 +13,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
 
                                         #separate into categorical and continuous parts
   if (pCont > 0) {
-    #Z = as.matrix(apply(as.matrix(X[, numLevels == 1]), 2, standardize))
-    Z = .Call("alloc_z", n, pCont, X, cpuNodeInfo)
+    Z = as.matrix(apply(as.matrix(X[, numLevels == 1]), 2, standardize))
+    #Z = .Call("alloc_z", n, pCont, X)
   }
   else Z = NULL
   if (pCat > 0){
@@ -28,7 +28,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
   
                                         #compute variable norms
-  res = .Call("alloc_res", Y)
+  #res = .Call("alloc_res", Y)
+  res = Y - mean(Y)
   candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, verbose, numCores=numCores)
  
  
@@ -76,7 +77,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
       }
       activeSet[[i]] = solution$activeSet
       betahat[[i]] = solution$betahat
-      res = .Call("copy_vec", solution$res, res)
+      #res = .Call("copy_vec", solution$res, res)
+      res = solution$res
       objValue[i] = solution$objValue
       #check kkt conditions on the rest
       if (verbose) time.kkt <- proc.time()  

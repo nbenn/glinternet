@@ -27,12 +27,27 @@ double timer_end(struct timespec start_time){
 }
 
 void* custom_alloc(R_allocator_t *allocator, size_t size) {
-  size_t alignment = ((allocator_data*)allocator->data)->alignment;
-  return (void*) _mm_malloc(size, alignment);
+  //size_t alignment = ((allocator_data*)allocator->data)->alignment;
+  /*size_t offset = ((allocator_data*)allocator->data)->offset;
+  void* orig_addr = _mm_malloc(size+offset, 4096);
+  Rprintf("original addr: %p\n", orig_addr);
+  Rprintf("max alig     : %d\n", max_alignment((uintptr_t)orig_addr));
+  void* shifted_addr = (void*)((uintptr_t)orig_addr + offset);
+  Rprintf("shifted addr : %p\n", shifted_addr);
+  Rprintf("max alig     : %d\n", max_alignment((uintptr_t)shifted_addr));
+  return (void*) shifted_addr;*/
+  return (void*) _mm_malloc(size, 64);
 }
 
-void custom_free(R_allocator_t *allocator, void * addr) {
-  _mm_free(addr);
+void custom_free(R_allocator_t *allocator, void* shifted_addr) {
+  /*size_t offset = ((allocator_data*)allocator->data)->offset;
+  Rprintf("shifted addr : %p\n", shifted_addr);
+  Rprintf("max alig     : %d\n", max_alignment((uintptr_t)shifted_addr));
+  void* orig_addr = (void*)((uintptr_t)shifted_addr-offset);
+  Rprintf("original addr: %p\n", orig_addr);
+  Rprintf("max alig     : %d\n", max_alignment((uintptr_t)orig_addr));
+  _mm_free(orig_addr);*/
+  _mm_free(shifted_addr);
 }
 
 SEXP alloc(int alignment, R_xlen_t length) {
@@ -48,20 +63,27 @@ SEXP alloc(int alignment, R_xlen_t length) {
 
   SEXP result = PROTECT(allocVector3(REALSXP, length, custom_allocator));
 
-  uintptr_t addr = (uintptr_t)REAL(result);
+  /*uintptr_t addr = (uintptr_t)REAL(result);
+  int counter = 0;
 
   while (max_alignment(addr) < custom_allocator_data->alignment) {
+    if (counter >= 10) {
+      Rf_error("memory allocation failed: could not get suitably aligned memory");
+    }
     uintptr_t new_addr = addr;
-    Rprintf("address : %p\nmax alig: %d\n--> repeating allocation.\n",
+    Rprintf("old address: %p, max alig: %d\n--> repeating allocation.\n",
       addr, max_alignment(addr));
     while (max_alignment(new_addr) < custom_allocator_data->alignment) {
       new_addr += sizeof(double);
     }
+    Rprintf("new address: %p, max alig: %d\n",
+      new_addr, max_alignment(new_addr));
     custom_allocator_data->offset = custom_allocator_data->offset + (new_addr - addr);
     UNPROTECT(1);
     result = PROTECT(allocVector3(REALSXP, length, custom_allocator));
     addr = (uintptr_t)REAL(result);
-  }
+    counter++;
+  }*/
 
   UNPROTECT(1);
   return result;
@@ -71,7 +93,7 @@ SEXP alloc_z(SEXP a, SEXP b, SEXP x) {
   R_xlen_t n = xlength(x);
   int nrows = asInteger(a);
   int ncols = asInteger(b);
-  int alignment = 128;
+  int alignment = 64;
   SEXP result;
 
   int i, j;
@@ -132,7 +154,7 @@ SEXP alloc_z(SEXP a, SEXP b, SEXP x) {
 
 SEXP alloc_res(SEXP y) {
   R_xlen_t nrows = length(y);
-  int alignment = 128;
+  int alignment = 64;
   SEXP result;
 
   PROTECT(result = alloc(alignment, nrows));

@@ -568,15 +568,37 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
   int p = *nVars;
   int i, j;
   size_t xOffset, yOffset;
-  double mean, norm, temp, rprd, rsum;
-  double product;
-  long n2 = (long)n * n;
+  double mean, norm, temp;
+  //double rprd, rsum;
+  //double product;
+  double *restrict product;
+  //long n2 = (long)n * n;
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
 #endif
 #pragma pomp inst begin(crout_compute_norms_cont_cont)
-#ifdef __AVX__
+#pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
+  for (j=0; j<p; j++){
+    xOffset = (xIndices[j] - 1)*n;
+    yOffset = (yIndices[j] - 1)*n;
+    product = malloc(n * sizeof *product);
+    mean = norm = 0.0;
+    for (i=0; i<n; i++){
+      product[i] = x[xOffset+i]*x[yOffset+i];
+      mean += product[i];
+      norm += product[i]*product[i];
+    }
+    mean /= n;
+    temp = 0.0;
+    for (i=0; i<n; i++){
+      temp += r[i]*(product[i]-mean);
+    }
+    result[j] += pow(n, 2)*(pow(contNorms[xIndices[j]-1], 2) + pow(contNorms[yIndices[j]-1], 2)) + (norm > 0 ? pow(temp, 2)/(norm-n*pow(mean, 2)) : 0);
+    result[j] = sqrt(result[j]/3)/n;
+    free(product);
+  }
+/*#ifdef __AVX__
   if(max_alignment((uintptr_t)x) < 64) {
     Rf_error("alignment of x is %d; need at least 64 byte alignment", max_alignment((uintptr_t)x));
   }
@@ -700,9 +722,10 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
   }
 #endif
 #pragma pomp inst end(crout_compute_norms_cont_cont)
+*/
 }
 
-SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, Rboolean verbose, SEXP R_numCores, SEXP R_result){
+SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, SEXP R_verbose, SEXP R_numCores, SEXP R_result){
   PROTECT(R_x = coerceVector(R_x, REALSXP));
   PROTECT(R_contNorms = coerceVector(R_contNorms, REALSXP));
   PROTECT(R_r = coerceVector(R_r, REALSXP));
@@ -712,6 +735,7 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   PROTECT(R_yIndices = coerceVector(R_yIndices, INTSXP));
   PROTECT(R_numCores = coerceVector(R_numCores, INTSXP));
   PROTECT(R_result = coerceVector(R_result, REALSXP));
+  PROTECT(R_verbose = coerceVector(R_verbose, LGLSXP));
   double *restrict x = REAL(R_x);
   double *restrict contNorms = REAL(R_contNorms);
   double *restrict r = REAL(R_r);
@@ -721,6 +745,8 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   int *restrict yIndices = INTEGER(R_yIndices);
   int *restrict numCores = INTEGER(R_numCores);
   double *restrict result = REAL(R_result);
+  Rboolean verbose = FALSE;
+  if (LOGICAL(R_verbose)[0] == TRUE) verbose = TRUE;
   struct timespec timer_norms_cont_cont;
   if (verbose) {  
     timer_norms_cont_cont = timer_start();
@@ -729,6 +755,6 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   if (verbose) {
     Rprintf("---> timer (compute_norms_cont_cont): %lf [s]\n", timer_end(timer_norms_cont_cont));
   }
-  UNPROTECT(9);
+  UNPROTECT(10);
   return R_result;
 }

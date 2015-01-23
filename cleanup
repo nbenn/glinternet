@@ -14,7 +14,7 @@ done
 CACHEDIR="autom4te.cache"
 
 if [ -d "$CACHEDIR" ]; then
-	rm -r "$CACHEDIR"
+	rm -rf "$CACHEDIR"
 fi
 
 for f in opari.rc opari.tab.c opari.tab.o ; do
