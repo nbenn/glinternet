@@ -617,7 +617,7 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
 #pragma pomp inst end(fista_gl_solver)
 }
 
-SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_residual, SEXP R_linear, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_convergedFlag, SEXP R_objValue, SEXP R_steps, SEXP R_family, Rboolean verbose){
+SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_residual, SEXP R_linear, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_convergedFlag, SEXP R_objValue, SEXP R_steps, SEXP R_family, SEXP R_verbose){
   PROTECT(R_x = coerceVector(R_x, INTSXP));
   PROTECT(R_z = coerceVector(R_z, REALSXP));
   PROTECT(R_y = coerceVector(R_y, REALSXP));
@@ -641,6 +641,7 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   PROTECT(R_objValue = coerceVector(R_objValue, REALSXP));
   PROTECT(R_steps = coerceVector(R_steps, REALSXP));
   PROTECT(R_family = coerceVector(R_family, INTSXP));
+  PROTECT(R_verbose = coerceVector(R_verbose, LGLSXP));
   int *restrict x = INTEGER(R_x);
   double *restrict z = REAL(R_z);
   double *restrict y = REAL(R_y);
@@ -664,8 +665,10 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   double *restrict objValue = REAL(R_objValue);
   double *restrict steps = REAL(R_steps);
   int *restrict family = INTEGER(R_family);
+  Rboolean verbose = FALSE;
+  if (LOGICAL(R_verbose)[0] == TRUE) verbose = TRUE;
   gl_solver(x, z, y, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family, verbose);
-  UNPROTECT(23);
+  UNPROTECT(24);
   SEXP result = PROTECT(allocVector(VECSXP, 4));
   SET_VECTOR_ELT(result, 0, R_intercept);
   SET_VECTOR_ELT(result, 1, R_beta);

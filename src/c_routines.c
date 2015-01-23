@@ -596,7 +596,7 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
 #pragma pomp inst end(crout_compute_norms_cont_cont)
 }
 
-SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, Rboolean verbose, SEXP R_numCores, SEXP R_result){
+SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, SEXP R_verbose, SEXP R_numCores, SEXP R_result){
   PROTECT(R_x = coerceVector(R_x, REALSXP));
   PROTECT(R_contNorms = coerceVector(R_contNorms, REALSXP));
   PROTECT(R_r = coerceVector(R_r, REALSXP));
@@ -606,6 +606,7 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   PROTECT(R_yIndices = coerceVector(R_yIndices, INTSXP));
   PROTECT(R_numCores = coerceVector(R_numCores, INTSXP));
   PROTECT(R_result = coerceVector(R_result, REALSXP));
+  PROTECT(R_verbose = coerceVector(R_verbose, LGLSXP));
   double *restrict x = REAL(R_x);
   double *restrict contNorms = REAL(R_contNorms);
   double *restrict r = REAL(R_r);
@@ -616,6 +617,8 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   int *restrict numCores = INTEGER(R_numCores);
   double *restrict result = REAL(R_result);
   struct timespec timer_norms_cont_cont;
+  Rboolean verbose = FALSE;
+  if (LOGICAL(R_verbose)[0] == TRUE) verbose = TRUE;
   if (verbose) {  
     timer_norms_cont_cont = timer_start();
   }
@@ -623,6 +626,6 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   if (verbose) {
     Rprintf("---> timer (compute_norms_cont_cont): %lf [s]\n", timer_end(timer_norms_cont_cont));
   }
-  UNPROTECT(9);
+  UNPROTECT(10);
   return R_result;
 }
