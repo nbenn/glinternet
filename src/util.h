@@ -23,6 +23,9 @@ void* custom_alloc(R_allocator_t *allocator, size_t size);
 void custom_free(R_allocator_t *allocator, void * addr);
 SEXP alloc(int alignment, R_xlen_t length);
 
+SEXP extract_col(SEXP src, SEXP i);
+SEXP import_col(SEXP col, SEXP dest, SEXP i);
+
 SEXP alloc_z(SEXP a, SEXP b, SEXP x);
 SEXP alloc_res(SEXP y);
 SEXP copy_vec(SEXP src, SEXP dst) ;

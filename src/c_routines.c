@@ -569,16 +569,16 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
   int i, j;
   size_t xOffset, yOffset;
   double mean, norm, temp;
-  //double rprd, rsum;
-  //double product;
-  double *restrict product;
-  //long n2 = (long)n * n;
+  double rprd, rsum;
+  double product;
+  //double *restrict product;
+  long n2 = (long)n * n;
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
 #endif
 #pragma pomp inst begin(crout_compute_norms_cont_cont)
-#pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
+/*#pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;
     yOffset = (yIndices[j] - 1)*n;
@@ -597,8 +597,8 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
     result[j] += pow(n, 2)*(pow(contNorms[xIndices[j]-1], 2) + pow(contNorms[yIndices[j]-1], 2)) + (norm > 0 ? pow(temp, 2)/(norm-n*pow(mean, 2)) : 0);
     result[j] = sqrt(result[j]/3)/n;
     free(product);
-  }
-/*#ifdef __AVX__
+  }*/
+#ifdef __AVX__
   if(max_alignment((uintptr_t)x) < 64) {
     Rf_error("alignment of x is %d; need at least 64 byte alignment", max_alignment((uintptr_t)x));
   }
@@ -606,7 +606,7 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
     Rf_error("alignment of r is %d; need at least 64 byte alignment", max_alignment((uintptr_t)r));
   }
   int nRowsDiv8 = n/8;
-#pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
+#pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, rprd, rsum, product)
   for (i=0; i<p; ++i) {
     xOffset = ((size_t)xIndices[i] - 1)*n;
     yOffset = ((size_t)yIndices[i] - 1)*n;
@@ -676,7 +676,7 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
     Rf_error("alignment of r is %d; need at least 32 byte alignment", max_alignment((uintptr_t)r));
   }
   int nRowsDiv2 = n/2;
-#pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
+#pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, rprd, rsum, product)
   for (i=0; i<p; ++i){
     xOffset = ((size_t)xIndices[i] - 1)*n;
     yOffset = ((size_t)yIndices[i] - 1)*n;
@@ -722,7 +722,6 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
   }
 #endif
 #pragma pomp inst end(crout_compute_norms_cont_cont)
-*/
 }
 
 SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, SEXP R_verbose, SEXP R_numCores, SEXP R_result){
