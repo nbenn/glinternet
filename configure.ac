@@ -47,6 +47,9 @@ AC_CHECK_HEADERS([float.h stdlib.h string.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_RESTRICT
+AC_C_INLINE
+AC_C_RESTRICT
+AC_TYPE_SIZE_T
 
 # Checks for library functions.
 AC_FUNC_MALLOC
@@ -69,6 +72,11 @@ if test "${ac_pkg_openmp}" = no; then
   # you could put AC_MSG_ERROR here is OpenMP is required
 fi
 
+GLNT_CFLAGS=""
+GLNT_LIBS="-L/usr/lib64 -lnuma -lrt"
+
+AC_SUBST(GLNT_CFLAGS)
+AC_SUBST(GLNT_LIBS)
 AC_SUBST(OPENMP_CFLAGS)
 AC_SUBST(CC)
 AC_SUBST(WARNINGS)

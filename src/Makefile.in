@@ -1,5 +1,5 @@
-PKG_CFLAGS =  @OPENMP_CFLAGS@
-PKG_LIBS   =  @OPENMP_CFLAGS@
+PKG_CFLAGS =  @OPENMP_CFLAGS@ @GLNT_CFLAGS@
+PKG_LIBS   =  @OPENMP_CFLAGS@ @GLNT_LIBS@
 
 CC   = @CC@
 WARN = @WARNINGS@
@@ -7,12 +7,13 @@ WARN = @WARNINGS@
 TARGET = glinternet.so
 
 SOURCES = $(shell echo *.c)
+HEADERS = $(shell echo *.h)
 OBJECTS = $(SOURCES:.c=.o)
 
 all: $(TARGET)
 
-.c.o:
-	$(CC) $(ALL_CPPFLAGS) $(ALL_CFLAGS) $(WARN) -c $< -o $@
+.c.o: $(HEADERS)
+	$(CC) $(ALL_CPPFLAGS) $(ALL_CFLAGS) $(WARN) $(PKG_CFLAGS) -c $< -o $@
 
 $(TARGET) : $(OBJECTS)
 	$(CC) $(SHLIB_LDFLAGS) -o $@ $^ $(LIBR) $(PKG_LIBS)

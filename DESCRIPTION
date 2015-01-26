@@ -1,4 +1,4 @@
-Package: glinternet1.single
+Package: glinternet2.numa
 Type: Package
 Title: Learning interactions via hierarchical group-lasso
         regularization

@@ -1,18 +1,20 @@
-check_kkt = function(X, Z, res, n, pCat, pCont, numLevels, candidates, activeSet, lambda, verbose=FALSE, numCores=1){
+check_kkt = function(X, Z, res, n, pCat, pCont, numLevels, candidates, activeSet, lambda, cpuInfo, verbose=FALSE){
 
   norms = vector("list", 5)
   names(norms) = c("cat", "cont", "catcat", "contcont", "catcont")
 
+  mynode = .Call("get_my_numa_node")
+
   #compute the norms
   if (pCat > 0){
-    norms$cat = compute_norms_cat(X, res, n, pCat, numLevels, numCores)
-    if (!is.null(candidates$variables$catcat)) norms$catcat = compute_norms_cat_cat(X, res, n, numLevels, candidates$variables$catcat, numCores)
+    norms$cat = compute_norms_cat(X, res, n, pCat, numLevels, cpuInfo$num_used_cpus)
+    if (!is.null(candidates$variables$catcat)) norms$catcat = compute_norms_cat_cat(X, res, n, numLevels, candidates$variables$catcat, cpuInfo$num_used_cpus)
   }
   if (pCont > 0){
-    norms$cont = compute_norms_cont(Z, res, n)
-    if (!is.null(candidates$variables$contcont)) norms$contcont = compute_norms_cont_cont(Z, norms$cont, res, n, candidates$variables$contcont, verbose, numCores)
+    norms$cont = compute_norms_cont(Z[[mynode+1]], res, n)
+    if (!is.null(candidates$variables$contcont)) norms$contcont = compute_norms_cont_cont(Z, norms$cont, res, n, candidates$variables$contcont, cpuInfo, verbose)
   }
-  if (!is.null(candidates$variables$catcont)) norms$catcont = compute_norms_cat_cont(X, Z, norms$cat, res, n, numLevels, candidates$variables$catcont, numCores)
+  if (!is.null(candidates$variables$catcont)) norms$catcont = compute_norms_cat_cont(X, Z[[mynode+1]], norms$cat, res, n, numLevels, candidates$variables$catcont, cpuInfo$num_used_cpus)
 
   #check for nonzero variables
   violators = lapply(1:5, function(x){

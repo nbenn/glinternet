@@ -11,10 +11,23 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   stopifnot(n==nrow(X), pCat+pCont==ncol(X), family=="gaussian"||family=="binomial")
   if (family=="binomial" && !all(Y %in% 0:1)) stop("Error:family=binomial but Y not in {0,1}")
 
+  cpuNodeInfo = .Call("get_cpu_node_usage")
+  cat("n.cores: ", cpuNodeInfo$num_used_cpus, "\n")
+  if(numCores != cpuNodeInfo$num_used_cpus) 
+    stop("Error: numCores != cpuNodeInfo$num_used_cpus")
+  if (verbose) print(cpuNodeInfo)
+
                                         #separate into categorical and continuous parts
+  if (pCat > 0){
+    stop("categorical variables currently not supported. (could be restored!)")
+  }
+  else {
+    levels = NULL
+    Xcat = NULL
+  }
   if (pCont > 0) {
     #Z = as.matrix(apply(as.matrix(X[, numLevels == 1]), 2, standardize))
-    Z = .Call("alloc_z", n, pCont, X)
+    Z = .Call("alloc_z", n, pCont, X, cpuNodeInfo)
     for (i in 1:pCont) {
       vec = .Call("extract_col", X, i)
       if (length(unique(vec)) == 1) {
@@ -23,25 +36,24 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
         result = vec - mean(vec)
         result = result / sqrt(t(result)%*%result)
       }
-      Z = .Call("import_col", result, Z, i)
+      Z = .Call("import_col", result, Z, i, cpuNodeInfo)
     }
   }
   else Z = NULL
-  if (pCat > 0){
-    catIndices = which(numLevels > 1)
-    levels = numLevels[catIndices]
-    Xcat = as.matrix(X[, catIndices])
+
+  if(!all(cpuNodeInfo$node_used >= 0)) {
+    tempdir <- Sys.getenv("TMPDIR")
+    cat("saving x to ", paste(tempdir, "/originalX.rds\n", sep=""))
+    saveRDS(X, paste(tempdir, "/originalX.rds", sep=""), compress=FALSE)
+    rm(X)
+    gc()
+    .Call("retry_alloc_z", Z, cpuNodeInfo)
   }
-  else {
-    levels = NULL
-    Xcat = NULL
-  }
-  
                                         #compute variable norms
   res = .Call("alloc_res", Y)
   #res = Y - mean(Y)
   #res = .Call("copy_vec", Y - mean(Y), res)
-  candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, verbose, numCores=numCores)
+  candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, cpuNodeInfo, screenLimit, verbose)
  
  
                                         #lambda grid if not user provided
@@ -93,7 +105,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
       objValue[i] = solution$objValue
       #check kkt conditions on the rest
       if (verbose) time.kkt <- proc.time()  
-      check = check_kkt(Xcat, Z, res, n, pCat, pCont, levels, candidates, activeSet[[i]], lambda[i], verbose, numCores)
+      check = check_kkt(Xcat, Z, res, n, pCat, pCont, levels, candidates, activeSet[[i]], lambda[i], cpuNodeInfo, verbose)
       if (verbose) {
         time.kkt <- proc.time() - time.kkt
         cat("--> time check kkt: ", time.kkt[1], "(user)\n",
@@ -107,7 +119,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     #update the candidate set if necessary
     if (!is.null(screenLimit) && (screenLimit<pCat+pCont) && i<nLambda) {
       if (verbose) time.candidates <- proc.time()  
-      candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, activeSet[[i]], candidates$norms, verbose, numCores)
+      candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, cpuNodeInfo, screenLimit, activeSet[[i]], candidates$norms, verbose)
       if (verbose) {
         time.candidates <- proc.time() - time.candidates
         cat("-> time candidates: ", time.candidates[1], "(user)\n",
@@ -131,9 +143,17 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     }
   }
 
+  if(!exists("X")) {
+    rm(Z)
+    gc()
+    #tempdir <- Sys.getenv("TMPDIR")
+    X = readRDS(paste(tempdir, "/originalX.rds", sep=""))
+  }
+
   #rescale betahat
-  Z = as.matrix(X[, numLevels==1])
-  betahatRescaled = lapply(1:i, function(j) rescale_betahat(activeSet[[j]], betahat[[j]], Xcat, Z, levels, n))
+  #Z = as.matrix(X[, numLevels==1])
+  #betahatRescaled = lapply(1:i, function(j) rescale_betahat(activeSet[[j]], betahat[[j]], Xcat, Z, levels, n))
+  betahatRescaled = lapply(1:i, function(j) rescale_betahat(activeSet[[j]], betahat[[j]], Xcat, X, levels, n))
 
   output = list(call=thisCall, fitted=fitted[, 1:i], lambda=lambda[1:i], objValue=objValue, activeSet=activeSet[1:i], betahat=betahatRescaled[1:i], numLevels=numLevels, family=family)
   class(output) = "glinternet"
