@@ -7,7 +7,7 @@ struct timespec timer_start(void){
     return start_time;
 }
 
-// call this function to end a timer, returning nanoseconds elapsed as a long
+// call this function to end a timer, returning elapsed seconds
 double timer_end(struct timespec start_time){
     struct timespec end_time;
     double accum;
