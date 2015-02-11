@@ -9,10 +9,10 @@ check_kkt = function(X, Z, res, n, pCat, pCont, numLevels, candidates, activeSet
     if (!is.null(candidates$variables$catcat)) norms$catcat = compute_norms_cat_cat(X, res, n, numLevels, candidates$variables$catcat, numCores)
   }
   if (pCont > 0){
-    norms$cont = compute_norms_cont(Z, res, n)
+    norms$cont = compute_norms_cont(Z[[2]], res, n)
     if (!is.null(candidates$variables$contcont)) norms$contcont = compute_norms_cont_cont(Z, norms$cont, res, n, candidates$variables$contcont, verbose, numCores)
   }
-  if (!is.null(candidates$variables$catcont)) norms$catcont = compute_norms_cat_cont(X, Z, norms$cat, res, n, numLevels, candidates$variables$catcont, numCores)
+  if (!is.null(candidates$variables$catcont)) norms$catcont = compute_norms_cat_cont(X, Z[[2]], norms$cat, res, n, numLevels, candidates$variables$catcont, numCores)
 
   #check for nonzero variables
   violators = lapply(1:5, function(x){

@@ -19,6 +19,6 @@ compute_norms_cat_cont = function(X, Z, catNorms, res, n, numLevels, indices, nu
 
 compute_norms_cont_cont = function(Z, contNorms, res, n, indices, verbose=FALSE, numCores=1){
   numInt = nrow(indices)
-  .Call("R_compute_norms_cont_cont", Z, contNorms, res, n, numInt, indices[, 1], indices[, 2], verbose, numCores, double(numInt))
+  .Call("R_compute_norms_cont_cont", Z[[1]], contNorms, res, n, numInt, indices[, 1], indices[, 2], verbose, numCores, double(numInt))
 }
 

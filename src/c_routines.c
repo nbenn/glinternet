@@ -8,7 +8,6 @@
 #ifdef _OPENMP
 # include <omp.h>
 #endif
-#include <x86intrin.h>
 
 static const double eps = 0.0;
 
@@ -563,14 +562,14 @@ SEXP R_compute_norms_cat_cont(SEXP R_x, SEXP R_z, SEXP R_catNorms, SEXP R_r, SEX
   return R_result;
 }
 
-void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, double *restrict r, int *restrict nRows, int *restrict nVars, int *restrict xIndices, int *restrict yIndices, int *restrict numCores, double *restrict result){
+void compute_norms_cont_cont(float *restrict x, double *restrict contNorms, float *restrict r, int *restrict nRows, int *restrict nVars, int *restrict xIndices, int *restrict yIndices, int *restrict numCores, double *restrict result){
   int n = *nRows;
   int p = *nVars;
   int i, j;
   size_t xOffset, yOffset;
-  double mean, norm, temp;
-  double rprd, rsum;
-  double product;
+  float mean, norm, temp;
+  float rprd, rsum;
+  float product;
   //double *restrict product;
   long n2 = (long)n * n;
 #ifdef _OPENMP
@@ -605,55 +604,51 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
   if(max_alignment((uintptr_t)r) < 64) {
     Rf_error("alignment of r is %d; need at least 64 byte alignment", max_alignment((uintptr_t)r));
   }
-  int nRowsDiv8 = n/8;
+  int nRowsDiv16 = n/16;
 #pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, rprd, rsum, product)
   for (i=0; i<p; ++i) {
     xOffset = ((size_t)xIndices[i] - 1)*n;
     yOffset = ((size_t)yIndices[i] - 1)*n;
-    __m256d mean1_pd = _mm256_set_pd(0.0,0.0,0.0,0.0);
-    __m256d mean2_pd = _mm256_set_pd(0.0,0.0,0.0,0.0);
-    __m256d norm1_pd = _mm256_set_pd(0.0,0.0,0.0,0.0);
-    __m256d norm2_pd = _mm256_set_pd(0.0,0.0,0.0,0.0);
-    __m256d rprd1_pd = _mm256_set_pd(0.0,0.0,0.0,0.0);
-    __m256d rprd2_pd = _mm256_set_pd(0.0,0.0,0.0,0.0);
-    __m256d rsum1_pd = _mm256_set_pd(0.0,0.0,0.0,0.0);
-    __m256d rsum2_pd = _mm256_set_pd(0.0,0.0,0.0,0.0);
-    for (j=0; j<nRowsDiv8; ++j) {
-      __m256d xx1_pd = _mm256_load_pd(x+xOffset+j*8);
-      __m256d xx2_pd = _mm256_load_pd(x+xOffset+j*8+4);
-      __m256d xy1_pd = _mm256_load_pd(x+yOffset+j*8);
-      __m256d xy2_pd = _mm256_load_pd(x+yOffset+j*8+4);
-      __m256d r1_pd = _mm256_load_pd(r+j*8);
-      __m256d r2_pd = _mm256_load_pd(r+j*8+4);
-      __m256d prod1_pd = _mm256_mul_pd(xx1_pd, xy1_pd);
-      __m256d prod2_pd = _mm256_mul_pd(xx2_pd, xy2_pd);
-      __m256d sqr1_pd = _mm256_mul_pd(prod1_pd, prod1_pd);
-      __m256d sqr2_pd = _mm256_mul_pd(prod2_pd, prod2_pd);
-      __m256d prdr1_pd = _mm256_mul_pd(r1_pd, prod1_pd);
-      __m256d prdr2_pd = _mm256_mul_pd(r2_pd, prod2_pd);
-      mean1_pd = _mm256_add_pd(mean1_pd,prod1_pd);
-      mean2_pd = _mm256_add_pd(mean2_pd,prod2_pd);
-      norm1_pd = _mm256_add_pd(norm1_pd,sqr1_pd);
-      norm2_pd = _mm256_add_pd(norm2_pd,sqr2_pd);
-      rprd1_pd = _mm256_add_pd(rprd1_pd,prdr1_pd);
-      rprd2_pd = _mm256_add_pd(rprd2_pd,prdr2_pd);
-      rsum1_pd = _mm256_add_pd(rsum1_pd,r1_pd);
-      rsum2_pd = _mm256_add_pd(rsum2_pd,r2_pd);
+    __m256 mean1_ps = _mm256_setzero_ps();
+    __m256 mean2_ps = _mm256_setzero_ps();
+    __m256 norm1_ps = _mm256_setzero_ps();
+    __m256 norm2_ps = _mm256_setzero_ps();
+    __m256 rprd1_ps = _mm256_setzero_ps();
+    __m256 rprd2_ps = _mm256_setzero_ps();
+    __m256 rsum1_ps = _mm256_setzero_ps();
+    __m256 rsum2_ps = _mm256_setzero_ps();
+    for (j=0; j<nRowsDiv16; ++j) {
+      /* fma instructions could be used if avx2 were supported;
+         not the case on euler :( */
+      __m256 xx1_ps = _mm256_load_ps(x+xOffset+j*16);
+      __m256 xx2_ps = _mm256_load_ps(x+xOffset+j*16+8);
+      __m256 xy1_ps = _mm256_load_ps(x+yOffset+j*16);
+      __m256 xy2_ps = _mm256_load_ps(x+yOffset+j*16+8);
+      __m256 r1_ps  = _mm256_load_ps(r+j*16);
+      __m256 r2_ps  = _mm256_load_ps(r+j*16+8);
+
+      __m256 prod1_ps = _mm256_mul_ps(xx1_ps, xy1_ps);
+      __m256 prod2_ps = _mm256_mul_ps(xx2_ps, xy2_ps);
+      __m256 sqr1_ps = _mm256_mul_ps(prod1_ps, prod1_ps);
+      __m256 sqr2_ps = _mm256_mul_ps(prod2_ps, prod2_ps);
+      __m256 prdr1_ps = _mm256_mul_ps(r1_ps, prod1_ps);
+      __m256 prdr2_ps = _mm256_mul_ps(r2_ps, prod2_ps);
+
+      mean1_ps = _mm256_add_ps(mean1_ps,prod1_ps);
+      mean2_ps = _mm256_add_ps(mean2_ps,prod2_ps);
+      norm1_ps = _mm256_add_ps(norm1_ps,sqr1_ps);
+      norm2_ps = _mm256_add_ps(norm2_ps,sqr2_ps);
+      rprd1_ps = _mm256_add_ps(rprd1_ps,prdr1_ps);
+      rprd2_ps = _mm256_add_ps(rprd2_ps,prdr2_ps);
+      rsum1_ps = _mm256_add_ps(rsum1_ps,r1_ps);
+      rsum2_ps = _mm256_add_ps(rsum2_ps,r2_ps);
     }
-    __m256d t_mean = _mm256_add_pd(mean1_pd, mean2_pd);
-    __m256d h_mean = _mm256_add_pd(t_mean, _mm256_permute2f128_pd(t_mean, t_mean, 0x1));
-    _mm_store_sd(&mean, _mm_hadd_pd( _mm256_castpd256_pd128(h_mean), _mm256_castpd256_pd128(h_mean)));
-    __m256d t_norm = _mm256_add_pd(norm1_pd, norm2_pd);
-    __m256d h_norm = _mm256_add_pd(t_norm, _mm256_permute2f128_pd(t_norm, t_norm, 0x1));
-    _mm_store_sd(&norm, _mm_hadd_pd( _mm256_castpd256_pd128(h_norm), _mm256_castpd256_pd128(h_norm)));
-    __m256d t_rprd = _mm256_add_pd(rprd1_pd, rprd2_pd);
-    __m256d h_rprd = _mm256_add_pd(t_rprd, _mm256_permute2f128_pd(t_rprd, t_rprd, 0x1));
-    _mm_store_sd(&rprd, _mm_hadd_pd( _mm256_castpd256_pd128(h_rprd), _mm256_castpd256_pd128(h_rprd)));
-    __m256d t_rsum = _mm256_add_pd(rsum1_pd, rsum2_pd);
-    __m256d h_rsum = _mm256_add_pd(t_rsum, _mm256_permute2f128_pd(t_rsum, t_rsum, 0x1));
-    _mm_store_sd(&rsum, _mm_hadd_pd( _mm256_castpd256_pd128(h_rsum), _mm256_castpd256_pd128(h_rsum)));
-    
-    for (j=nRowsDiv8*8; j<n; ++j){
+    mean = sum_to_float(_mm256_add_ps(mean1_ps, mean2_ps));
+    norm = sum_to_float(_mm256_add_ps(norm1_ps, norm2_ps));
+    rprd = sum_to_float(_mm256_add_ps(rprd1_ps, rprd2_ps));
+    rsum = sum_to_float(_mm256_add_ps(rsum1_ps, rsum2_ps));
+
+    for (j=nRowsDiv16*16; j<n; ++j){
       product = x[xOffset+j]*x[yOffset+j];
       mean += product;
       norm += product*product;
@@ -725,7 +720,7 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
 }
 
 SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, SEXP R_verbose, SEXP R_numCores, SEXP R_result){
-  PROTECT(R_x = coerceVector(R_x, REALSXP));
+  //PROTECT(R_x = coerceVector(R_x, REALSXP));
   PROTECT(R_contNorms = coerceVector(R_contNorms, REALSXP));
   PROTECT(R_r = coerceVector(R_r, REALSXP));
   PROTECT(R_nRows = coerceVector(R_nRows, INTSXP));
@@ -735,25 +730,36 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   PROTECT(R_numCores = coerceVector(R_numCores, INTSXP));
   PROTECT(R_result = coerceVector(R_result, REALSXP));
   PROTECT(R_verbose = coerceVector(R_verbose, LGLSXP));
-  double *restrict x = REAL(R_x);
+  float *restrict x = R_ExternalPtrAddr(R_x);
+  //double *restrict x = REAL(R_x);
   double *restrict contNorms = REAL(R_contNorms);
-  double *restrict r = REAL(R_r);
+  //double *restrict r = REAL(R_r);
   int *restrict nRows = INTEGER(R_nRows);
   int *restrict nVars = INTEGER(R_nVars);
   int *restrict xIndices = INTEGER(R_xIndices);
   int *restrict yIndices = INTEGER(R_yIndices);
   int *restrict numCores = INTEGER(R_numCores);
   double *restrict result = REAL(R_result);
+
+  R_xlen_t n = xlength(R_r);
+  float *restrict r = (float*)_mm_malloc(n*sizeof(float), 64);
+  double *restrict R_r_ptr = REAL(R_r);
+  for (size_t i = 0; i < n; ++i) {
+    r[i] = (float)R_r_ptr[i];
+  }
+
   Rboolean verbose = FALSE;
   if (LOGICAL(R_verbose)[0] == TRUE) verbose = TRUE;
   struct timespec timer_norms_cont_cont;
   if (verbose) {  
     timer_norms_cont_cont = timer_start();
   }
+
   compute_norms_cont_cont(x, contNorms, r, nRows, nVars, xIndices, yIndices, numCores, result);
+
   if (verbose) {
     Rprintf("---> timer (compute_norms_cont_cont): %lf [s]\n", timer_end(timer_norms_cont_cont));
   }
-  UNPROTECT(10);
+  UNPROTECT(9);
   return R_result;
 }

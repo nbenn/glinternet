@@ -17,7 +17,7 @@ get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, screenLimit=NULL
   }
   if (pCont > 0){
     candidates$variables$cont = matrix(1:pCont, ncol=1)
-    if (is.null(norms$cont)) candidates$norms$cont = compute_norms_cont(Z, res, n)
+    if (is.null(norms$cont)) candidates$norms$cont = compute_norms_cont(Z[[2]], res, n)
     else candidates$norms$cont = norms$cont
   }
   
@@ -44,7 +44,7 @@ get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, screenLimit=NULL
   #get interaction norms
   if (!is.null(candidates$variables$catcat)) candidates$norms$catcat = compute_norms_cat_cat(X, res, n, numLevels, candidates$variables$catcat, numCores)
   if (!is.null(candidates$variables$contcont)) candidates$norms$contcont = compute_norms_cont_cont(Z, candidates$norms$cont, res, n, candidates$variables$contcont, verbose, numCores)
-  if (!is.null(candidates$variables$catcont)) candidates$norms$catcont = compute_norms_cat_cont(X, Z, candidates$norms$cat, res, n, numLevels, candidates$variables$catcont, numCores)
+  if (!is.null(candidates$variables$catcont)) candidates$norms$catcont = compute_norms_cat_cont(X, Z[[2]], candidates$norms$cat, res, n, numLevels, candidates$variables$catcont, numCores)
   
   return(candidates)
 }

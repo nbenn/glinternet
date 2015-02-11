@@ -37,22 +37,22 @@ void* custom_alloc(R_allocator_t *allocator, size_t size) {
   //size_t alignment = ((allocator_data*)allocator->data)->alignment;
   size_t offset = ((allocator_data*)allocator->data)->offset;
   void* orig_addr = _mm_malloc(size+offset, 4096);
-  Rprintf("original addr: %p\n", orig_addr);
-  Rprintf("max alig     : %d\n", max_alignment((uintptr_t)orig_addr));
+  //Rprintf("original addr: %p\n", orig_addr);
+  //Rprintf("max alig     : %d\n", max_alignment((uintptr_t)orig_addr));
   void* shifted_addr = (void*)((uintptr_t)orig_addr + offset);
-  Rprintf("shifted addr : %p\n", shifted_addr);
-  Rprintf("max alig     : %d\n", max_alignment((uintptr_t)shifted_addr));
+  //Rprintf("shifted addr : %p\n", shifted_addr);
+  //Rprintf("max alig     : %d\n", max_alignment((uintptr_t)shifted_addr));
   return (void*) shifted_addr;
   //return (void*) _mm_malloc(size, 64);
 }
 
 void custom_free(R_allocator_t *allocator, void* shifted_addr) {
   size_t offset = ((allocator_data*)allocator->data)->offset;
-  Rprintf("shifted addr : %p\n", shifted_addr);
-  Rprintf("max alig     : %d\n", max_alignment((uintptr_t)shifted_addr));
+  //Rprintf("shifted addr : %p\n", shifted_addr);
+  //Rprintf("max alig     : %d\n", max_alignment((uintptr_t)shifted_addr));
   void* orig_addr = (void*)((uintptr_t)shifted_addr-offset);
-  Rprintf("original addr: %p\n", orig_addr);
-  Rprintf("max alig     : %d\n", max_alignment((uintptr_t)orig_addr));
+  //Rprintf("original addr: %p\n", orig_addr);
+  //Rprintf("max alig     : %d\n", max_alignment((uintptr_t)orig_addr));
   _mm_free(orig_addr);
   //_mm_free(shifted_addr);
 }
@@ -96,80 +96,67 @@ SEXP alloc(int alignment, R_xlen_t length) {
   return result;
 }
 
+static void finalize_singles_array_pointer(SEXP ext) {
+  if (NULL == R_ExternalPtrAddr(ext))
+    return;
+  Rprintf("finalizing singles array\n");
+  float *ptr = (float *) R_ExternalPtrAddr(ext);
+  _mm_free(ptr);
+  R_ClearExternalPtr(ext);
+}
+
 SEXP alloc_z(SEXP a, SEXP b, SEXP x) {
   R_xlen_t n = xlength(x);
   R_xlen_t nrows = (R_xlen_t)asInteger(a);
   R_xlen_t ncols = (R_xlen_t)asInteger(b);
   int alignment = 64;
-  SEXP result;
+  SEXP result, result_names;
 
   if(nrows * ncols != n) {
     Rf_error("dimensions mismatch: %d rows times %d cols != %d elements", 
       nrows, ncols, n);
   }
 
-  PROTECT(result = alloc(alignment, n));
+  PROTECT(result = allocVector(VECSXP, 2));
 
-  /*LDOUBLE s, t;
-  R_xlen_t i, j;
-  double mean;
+  // set up names for individual matrices: node_numNode
+  char names[2][10];
+  int index_size = snprintf(NULL, 0, "%d", 0) + 1;
+  char index[index_size];
+  char name1[] = "sngl_";
+  char name2[] = "dubl_";
+  int name_size = sizeof(name1)/sizeof(char);
+  if ((index_size+name_size+1) > (sizeof(names[0])/sizeof(char))) {
+    Rf_error("too many nodes in alloc_z");
+  }
+  snprintf(index, sizeof(index), "%d", 0); 
+  strncpy(names[0], name1, name_size);
+  strncat(names[0], index, index_size);
+  strncpy(names[1], name2, name_size);
+  strncat(names[1], index, index_size);
+  PROTECT(result_names = allocVector(STRSXP, 2));
 
-  // populate used matrices with normalized x values
-  for (i=0; i<ncols; ++i) {
-    double first = REAL(x)[i*nrows];      
-    bool allEqual = false;
-    for (j=1; j<nrows; ++j) {
-      if (REAL(x)[j+i*nrows] != first) {
-        break;
-      }
-      else if (j == nrows-1) allEqual = true;
-    }
-    if (allEqual) {
-      for (j=0; j<nrows; ++j) {
-        REAL(result)[j+i*nrows] = 0.;
-      }
-      continue;
-    }
-    s = 0.;
-    t = 0.;
-    double *restrict newvec = malloc(nrows * sizeof (double));
-    // calculation of mean according to R/src/main/summary.c
-    // see function do_summary(...)
-    for (j = 0; j < nrows; ++j) s += REAL(x)[j+i*nrows];
-    s /= nrows;
-    if(R_FINITE((double)s)) {
-      for (j = 0; j < nrows; ++j) t += (REAL(x)[j+i*nrows] - s);
-      s += t/nrows;
-    }
-    mean = (double) s;
+  SET_STRING_ELT(result_names, 0, mkChar(names[0])); 
+  SET_STRING_ELT(result_names, 1, mkChar(names[1])); 
 
-    for (j=0; j<nrows; ++j) {
-      newvec[j] = REAL(x)[j+i*nrows] - mean;
-    }
+  setAttrib(result, R_NamesSymbol, result_names);
 
-    // calculate inner prod of norm col vec (newvec)
-    int nrx = 1, ncx = nrows, nry = nrows, ncy = 1;
-    char *transa = "N", *transb = "N";
-    double ans = 0.0, one = 1.0, zero = 0.0;
+  SEXP tmp_sngl, tmp_dubl;
+  float* array = (float*)_mm_malloc(n*sizeof(float), alignment);
+  PROTECT(tmp_sngl = R_MakeExternalPtr(array, R_NilValue, R_NilValue));
+  R_RegisterCFinalizerEx(tmp_sngl, finalize_singles_array_pointer, TRUE);
+  PROTECT(tmp_dubl = alloc(alignment, n));
+  SET_VECTOR_ELT(result, 0, tmp_sngl);
+  SET_VECTOR_ELT(result, 1, tmp_dubl);
 
-    F77_CALL(dgemm)(transa, transb, &nrx, &ncy, &ncx, &one,
-        newvec, &nrx, newvec, &nry, &zero, &ans, &nrx);
-
-    double norm = 1/sqrt(ans);
-    for (int j=0; j<nrows; ++j) {
-      REAL(result)[j+i*nrows] = newvec[j] * norm;
-    }
-    free(newvec);
-  }*/
-
-  // make 2d array out of result
+  // make 2d array out of double array
   SEXP dims2;
   PROTECT(dims2 = allocVector(INTSXP, 2));
   INTEGER(dims2)[0] = nrows;
   INTEGER(dims2)[1] = ncols;
-  setAttrib(result, R_DimSymbol, dims2);
+  setAttrib(VECTOR_ELT(result, 1), R_DimSymbol, dims2);
 
-  UNPROTECT(2);
+  UNPROTECT(5);
   return result;
 }
 
@@ -202,7 +189,7 @@ SEXP extract_col(SEXP src, SEXP i) {
 
 SEXP import_col(SEXP col, SEXP dest, SEXP i) {
   SEXP dims2;
-  PROTECT(dims2 = getAttrib(dest, R_DimSymbol));
+  PROTECT(dims2 = getAttrib(VECTOR_ELT(dest, 1), R_DimSymbol));
   R_xlen_t nrows = (R_xlen_t)INTEGER(dims2)[0];
   R_xlen_t ncols = (R_xlen_t)INTEGER(dims2)[1];
 
@@ -222,67 +209,12 @@ SEXP import_col(SEXP col, SEXP dest, SEXP i) {
 
   col_idx -= 1;
 
+  float *flt_ptr = R_ExternalPtrAddr(VECTOR_ELT(dest, 0));
   for (R_xlen_t i = 0; i < nrows; ++i) {
-    REAL(dest)[i+col_idx*nrows] = REAL(col)[i];
+    flt_ptr[i+col_idx*nrows] = (float)REAL(col)[i];
+    REAL(VECTOR_ELT(dest, 1))[i+col_idx*nrows] = REAL(col)[i];
   }
 
   UNPROTECT(2);
   return dest;
 }
-
-SEXP alloc_res(SEXP y) {
-
-  //Rprintf("allocating vector\n");
-
-  R_xlen_t n = XLENGTH(y);
-  SEXP result;
-  int alignment = 64;
-  PROTECT(result = alloc(alignment, n));
-
-  LDOUBLE s = 0., t = 0.;
-  R_xlen_t i;
-
-  // calculation of mean according to R/src/main/summary.c
-  // see function do_summary(...)
-  for (i = 0; i < n; ++i) s += REAL(y)[i];
-  s /= n;
-  if(R_FINITE((double)s)) {
-    for (i = 0; i < n; ++i) t += (REAL(y)[i] - s);
-    s += t/n;
-  }
-
-  double mean_val = (double) s;
-
-  for (i = 0; i < n; ++i) {
-    REAL(result)[i] = REAL(y)[i]-mean_val;
-  }
-
-  UNPROTECT(1);
-  return result;
-}
-
-SEXP copy_vec(SEXP src, SEXP dst) {
-  R_xlen_t n_src = xlength(src);
-  R_xlen_t n_dst = xlength(dst);
-
-  //Rprintf("copying vector\n");
-
-  if(n_dst != n_dst) {
-    Rf_error("dimensions mismatch: %d (source) != %d (destination)", 
-      n_src, n_dst);
-  }
-
-  PROTECT(src = coerceVector(src, REALSXP));
-  PROTECT(dst = coerceVector(dst, REALSXP));
-
-  double *restrict source = REAL(src);
-  double *restrict dstntn = REAL(dst);
-
-  for (size_t i = 0; i < n_src; ++i) {
-    dstntn[i] = source[i];
-  }
-
-  UNPROTECT(2);
-  return dst;
-}
-

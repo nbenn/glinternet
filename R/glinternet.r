@@ -13,7 +13,6 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
 
                                         #separate into categorical and continuous parts
   if (pCont > 0) {
-    #Z = as.matrix(apply(as.matrix(X[, numLevels == 1]), 2, standardize))
     Z = .Call("alloc_z", n, pCont, X)
     for (i in 1:pCont) {
       vec = .Call("extract_col", X, i)
@@ -28,9 +27,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
   else Z = NULL
   if (pCat > 0){
-    catIndices = which(numLevels > 1)
-    levels = numLevels[catIndices]
-    Xcat = as.matrix(X[, catIndices])
+    stop("categorical variables currently not supported. (can be restored!)")
   }
   else {
     levels = NULL
@@ -38,9 +35,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
   
                                         #compute variable norms
-  res = .Call("alloc_res", Y)
-  #res = Y - mean(Y)
-  #res = .Call("copy_vec", Y - mean(Y), res)
+  res = Y - mean(Y)
   candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, screenLimit, verbose, numCores=numCores)
  
  
@@ -80,7 +75,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     while (TRUE){
       #group lasso on strong set
       if (verbose) time.gl <- proc.time()  
-      solution = group_lasso(Xcat, Z, Y, activeSet[[i]], betahat[[i]], levels, lambda[i], family, tol, maxIter, verbose)
+      solution = group_lasso(Xcat, Z[[2]], Y, activeSet[[i]], betahat[[i]], levels, lambda[i], family, tol, maxIter, verbose)
       if (verbose) {
         time.gl <- proc.time() - time.gl
         cat("--> time group lasso: ", time.gl[1], "(user)\n",
@@ -88,8 +83,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
       }
       activeSet[[i]] = solution$activeSet
       betahat[[i]] = solution$betahat
-      res = .Call("copy_vec", solution$res, res)
-      #res = solution$res
+      res = solution$res
       objValue[i] = solution$objValue
       #check kkt conditions on the rest
       if (verbose) time.kkt <- proc.time()  
