@@ -1,4 +1,4 @@
-Package: glinternet3.fista
+Package: glinternet3.sfista
 Type: Package
 Title: Learning interactions via hierarchical group-lasso
         regularization
