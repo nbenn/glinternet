@@ -59,6 +59,15 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
 
 //#ifdef __AVX__
 
+    if(max_alignment((uintptr_t)z) < 64) {
+      Rf_error("alignment of z is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)z));
+    }
+    if(max_alignment((uintptr_t)localResOpt) < 64) {
+      Rf_error("alignment of localResOpt is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)localResOpt));
+    }
+
     int nDiv8 = n/8;
     for (p=0; p<pCont; p++){
       
@@ -150,6 +159,19 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
 
     int nDiv8 = n/8;
     double *restrict prdOpt = _mm_malloc(n * sizeof *prdOpt, 64);
+
+    if(max_alignment((uintptr_t)localResOpt) < 64) {
+      Rf_error("alignment of localResOpt is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)localResOpt));
+    }
+    if(max_alignment((uintptr_t)z) < 64) {
+      Rf_error("alignment of z is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)z));
+    }
+    if(max_alignment((uintptr_t)prdOpt) < 64) {
+      Rf_error("alignment of prdOpt is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)prdOpt));
+    }
 
     for (p=0; p<pContCont; p+=2){
       int localOffset = offset + 3 * (p / 2);
@@ -327,13 +349,13 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
     }
   }
 
-  if (pContCont > 200) {
+  /*if (pContCont > 200) {
     Rprintf("x*b:\n");
     for (i=0; i<n; ++i){
       Rprintf("%.30f\n%.20f\n\n", localResMnt[i], localResOpt[i]);
     }
     Rf_error("i've seen enough!");
-  }
+  }*/
   
   /* aggregate local results */
   for (i=0; i<n; i++) {
@@ -433,6 +455,16 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
 //#ifdef __AVX__
 
     int nDiv16 = n/16;
+
+    if(max_alignment((uintptr_t)z) < 64) {
+      Rf_error("alignment of z is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)z));
+    }
+    if(max_alignment((uintptr_t)r) < 64) {
+      Rf_error("alignment of r is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)r));
+    }
+
     for (p=0; p<pCont; p++){
 
       int localOffset = offset + p;
@@ -524,6 +556,15 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
     int nDiv8 = n/8;
     double prod;
     double rprd, rsum;
+
+    if(max_alignment((uintptr_t)z) < 64) {
+      Rf_error("alignment of z is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)z));
+    }
+    if(max_alignment((uintptr_t)r) < 64) {
+      Rf_error("alignment of r is %d; need at least 64 byte alignment",
+        max_alignment((uintptr_t)r));
+    }
 
     for (p=0; p<pContCont; p+=2){
       int localOffset = offset + 3 * (p / 2);

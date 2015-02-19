@@ -13,6 +13,14 @@ static inline double sum_to_double(const __m256d x, const __m256d y) {
   return _mm_cvtsd_f64(sum2);
 }
 
+static inline int max_alignment(uintptr_t pointer) {
+  int alignment = 2;
+  while(pointer % alignment == 0) {
+    alignment *= 2;
+  }
+  return alignment/2;
+}
+
 struct timespec timer_start();
 double timer_end(struct timespec);
 
