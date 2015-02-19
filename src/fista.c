@@ -16,48 +16,102 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   int *restrict xOffsetPtr;
   double *restrict zOffsetPtr;
   double factor;
+
+  // Setting up the localResults arrays
+//#ifdef __AVX__
+  double *restrict localResOpt = _mm_malloc(n * sizeof(double), 64);
+  memset(localResOpt, 0, n * sizeof(double));
+//#else
+  double *restrict localResMnt = malloc(n * sizeof(double));
+  memset(localResMnt, 0, n * sizeof(double));
+//#endif
+
 #pragma pomp inst begin(fista_x_times_beta)
+  
   /* categorical */
   if (pCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(n);
     for (p=0; p<pCat; p++){
       nLevels = numLevels[catIndices[p]-1];
       /* check if beta for this variable is all zero. If so, move on */
       allzero = 1;
       for (i=0; i<nLevels; i++){
-	if (fabs(beta[offset + i]) > eps){
-	  allzero = 0;
-	  break;
-	}
+  if (fabs(beta[offset + i]) > eps){
+    allzero = 0;
+    break;
+  }
       }
       if (allzero){
-	offset += nLevels;
-	continue;
+  offset += nLevels;
+  continue;
       }
       xOffsetPtr = x + (catIndices[p]-1)*n;
       for (i=0; i<n; i++){
-	result[i] += beta[offset + xOffsetPtr[i]] / factor;
+  result[i] += beta[offset + xOffsetPtr[i]] / factor;
       }
       offset += nLevels;
     }
   }
+  
   /* continuous */
   if (pCont > 0){
+
+//#ifdef __AVX__
+
+    int nDiv8 = n/8;
     for (p=0; p<pCont; p++){
+      
+      int localOffset = offset + p;
       /* check if beta is zero */
-      if (fabs(beta[offset]) < eps){
-	++offset;
-	continue;
+      if (fabs(beta[localOffset]) >= eps) {
+        zOffsetPtr = z + (contIndices[p]-1)*n;
+        
+        __m256d beta0 = _mm256_broadcast_sd(beta+localOffset);
+        for (i=0; i<nDiv8; ++i){
+          __m256d z0 = _mm256_load_pd(zOffsetPtr+i*8);
+          __m256d z1 = _mm256_load_pd(zOffsetPtr+i*8+4);
+        
+          __m256d zb0 = _mm256_mul_pd(z0, beta0);
+          __m256d zb1 = _mm256_mul_pd(z1, beta0);
+
+          __m256d res0 = _mm256_load_pd(localResOpt+i*8);
+          __m256d res1 = _mm256_load_pd(localResOpt+i*8+4);
+
+          __m256d prd0 = _mm256_add_pd(res0, zb0);
+          __m256d prd1 = _mm256_add_pd(res1, zb1);
+
+          _mm256_store_pd(localResOpt+i*8,   prd0);
+          _mm256_store_pd(localResOpt+i*8+4, prd1);
+        }
+        
+        for (i=nDiv8*8; i<n; ++i){
+          localResOpt[i] += zOffsetPtr[i] * beta[localOffset];
+        }
       }
-      zOffsetPtr = z + (contIndices[p]-1)*n;
-      for (i=0; i<n; i++){
-	result[i] += zOffsetPtr[i] * beta[offset];
-      }
-      ++offset;
     }
+
+//#else
+
+    for (p=0; p<pCont; p++){
+      int localOffset = offset + p;
+      /* check if beta is zero */
+      if (fabs(beta[localOffset]) >= eps) {
+        zOffsetPtr = z + (contIndices[p]-1)*n;
+        for (i=0; i<n; i++) {
+          localResMnt[i] += zOffsetPtr[i] * beta[localOffset];
+        }
+      }
+    }
+
+//#endif
+
+    offset += pCont;
   }
+  
   /* categorical-categorical */
   if (pCatCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     int len;
     int *restrict yOffsetPtr;
     factor = sqrt(n);
@@ -67,64 +121,186 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
       /* check if beta is zero */
       allzero = 1;
       for (i=0; i<len; i++){
-	if (fabs(beta[offset + i]) > eps){
-	  allzero = 0;
-	  break;
-	}
+  if (fabs(beta[offset + i]) > eps){
+    allzero = 0;
+    break;
+  }
       }
       if (allzero){
-	offset += len;
-	continue;
+  offset += len;
+  continue;
       }
       xOffsetPtr = x + (catcatIndices[p]-1)*n;
       yOffsetPtr = x + (catcatIndices[p+1]-1)*n;
       for (i=0; i<n; i++){
-	result[i] += beta[offset + xOffsetPtr[i] + nLevels*yOffsetPtr[i]] / factor;
+  result[i] += beta[offset + xOffsetPtr[i] + nLevels*yOffsetPtr[i]] / factor;
       }
       offset += len;
     }
   }
+  
   /* continuous-continuous */
   if (pContCont > 0){
+
     double *restrict wOffsetPtr;
     factor = sqrt(3);
-    double *restrict product = malloc(n * sizeof *product);
     double mean, norm;
+
+//#ifdef __AVX__
+
+    int nDiv8 = n/8;
+    double *restrict prdOpt = _mm_malloc(n * sizeof *prdOpt, 64);
+
     for (p=0; p<pContCont; p+=2){
+      int localOffset = offset + 3 * (p / 2);
       /* check if beta is zero */
       allzero = 1;
       for (i=0; i<3; i++){
-	if (fabs(beta[offset + i]) > eps){
-	  allzero = 0;
-	  break;
-	}
+        if (fabs(beta[localOffset + i]) > eps){
+          allzero = 0;
+          break;
+        }
       }
-      if (allzero){
-	offset += 3;
-	continue;
+      if (!allzero){
+        wOffsetPtr = z + (contcontIndices[p]-1)*n;
+        zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+        __m256d mean1 = _mm256_setzero_pd();
+        __m256d norm1 = _mm256_setzero_pd();
+        __m256d mean2 = _mm256_setzero_pd();
+        __m256d norm2 = _mm256_setzero_pd();
+        __m256d beta0 = _mm256_broadcast_sd(beta+localOffset);
+        __m256d beta1 = _mm256_broadcast_sd(beta+localOffset+1);
+        __m256d factr = _mm256_set1_pd(1.0/factor);
+        for (i=0; i<nDiv8; ++i){
+          __m256d z0 = _mm256_load_pd(zOffsetPtr+i*8);
+          __m256d z1 = _mm256_load_pd(zOffsetPtr+i*8+4);
+          __m256d w0 = _mm256_load_pd(wOffsetPtr+i*8);
+          __m256d w1 = _mm256_load_pd(wOffsetPtr+i*8+4);
+
+          __m256d wb0 = _mm256_mul_pd(w0, beta0);
+          __m256d wb1 = _mm256_mul_pd(w1, beta0);
+          __m256d zb0 = _mm256_mul_pd(z0, beta1);
+          __m256d zb1 = _mm256_mul_pd(z1, beta1);
+
+          __m256d wzb0 = _mm256_add_pd(wb0, zb0);
+          __m256d wzb1 = _mm256_add_pd(wb1, zb1);
+
+          __m256d wzbf0 = _mm256_mul_pd(wzb0, factr);
+          __m256d wzbf1 = _mm256_mul_pd(wzb1, factr);
+
+          __m256d res0 = _mm256_load_pd(localResOpt+i*8);
+          __m256d res1 = _mm256_load_pd(localResOpt+i*8+4);
+
+          __m256d wzbfr0 = _mm256_add_pd(res0, wzbf0);
+          __m256d wzbfr1 = _mm256_add_pd(res1, wzbf1);
+
+          _mm256_store_pd(localResOpt+i*8,   wzbfr0);
+          _mm256_store_pd(localResOpt+i*8+4, wzbfr1);
+
+          __m256d prod1 = _mm256_mul_pd(w0, z0);
+          __m256d prod2 = _mm256_mul_pd(w1, z1);
+          __m256d sqpd1 = _mm256_mul_pd(prod1, prod1);
+          __m256d sqpd2 = _mm256_mul_pd(prod2, prod2);
+
+          mean1 = _mm256_add_pd(mean1, prod1);
+          mean2 = _mm256_add_pd(mean2, prod2);
+          norm1 = _mm256_add_pd(norm1, sqpd1);
+          norm2 = _mm256_add_pd(norm2, sqpd2);
+
+          _mm256_store_pd(prdOpt+i*8,   prod1);
+          _mm256_store_pd(prdOpt+i*8+4, prod2);
+        }
+
+        mean = sum_to_double(mean1, mean2);
+        norm = sum_to_double(norm1, norm2);
+
+        for (i=nDiv8*8; i<n; ++i){
+          localResOpt[i] += (wOffsetPtr[i]*beta[localOffset] + zOffsetPtr[i]*beta[localOffset+1]) / factor;
+          prdOpt[i] = wOffsetPtr[i] * zOffsetPtr[i];
+          mean += prdOpt[i];
+          norm += prdOpt[i]*prdOpt[i];
+        }
+
+        if (norm > 0){
+          mean /= n;
+          norm = sqrt(3 * (norm-n*mean*mean));
+          double betanorm = beta[localOffset+2] / norm;
+          __m256d bnr = _mm256_set1_pd(betanorm);          
+          __m256d men = _mm256_set1_pd(mean);
+
+          for (i=0; i<nDiv8; ++i){
+            __m256d prod0 = _mm256_load_pd(prdOpt+i*8);
+            __m256d prod1 = _mm256_load_pd(prdOpt+i*8+4);
+
+            __m256d prmn0 = _mm256_sub_pd(prod0, men);
+            __m256d prmn1 = _mm256_sub_pd(prod1, men);
+
+            __m256d pmbn0 = _mm256_mul_pd(prmn0, bnr);
+            __m256d pmbn1 = _mm256_mul_pd(prmn1, bnr);
+
+            __m256d res0 = _mm256_load_pd(localResOpt+i*8);
+            __m256d res1 = _mm256_load_pd(localResOpt+i*8+4);
+
+            __m256d pmbnr0 = _mm256_add_pd(res0, pmbn0);
+            __m256d pmbnr1 = _mm256_add_pd(res1, pmbn1);
+
+            _mm256_store_pd(localResOpt+i*8,   pmbnr0);
+            _mm256_store_pd(localResOpt+i*8+4, pmbnr1);
+          }
+
+          for (i=nDiv8*8; i<n; ++i){
+            localResOpt[i] += (prdOpt[i]-mean) * betanorm;
+          }
+        }
       }
-      wOffsetPtr = z + (contcontIndices[p]-1)*n;
-      zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
-      mean = norm = 0.0;
-      for (i=0; i<n; i++){
-	result[i] += (wOffsetPtr[i]*beta[offset] + zOffsetPtr[i]*beta[offset+1]) / factor;
-	product[i] = wOffsetPtr[i] * zOffsetPtr[i];
-	mean += product[i];
-	norm += product[i]*product[i];
-      }
-      if (norm > 0){
-	mean /= n;
-	norm = sqrt(3 * (norm-n*pow(mean, 2)));
-	for (i=0; i<n; i++){
-	  result[i] += (product[i]-mean) * beta[offset+2] / norm;
-	}
-      }
-      offset += 3;
     }
-    free(product);
+
+    _mm_free(prdOpt);
+
+//#else
+
+    double *restrict prdMnt = malloc(n * sizeof *prdMnt);
+
+    for (p=0; p<pContCont; p+=2){
+      int localOffset = offset + 3 * (p / 2);
+      /* check if beta is zero */
+      allzero = 1;
+      for (i=0; i<3; i++){
+        if (fabs(beta[localOffset + i]) > eps){
+          allzero = 0;
+          break;
+        }
+      }
+      if (!allzero){
+        wOffsetPtr = z + (contcontIndices[p]-1)*n;
+        zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+        mean = norm = 0.0;
+        for (i=0; i<n; i++){
+          localResMnt[i] += (wOffsetPtr[i]*beta[localOffset] + zOffsetPtr[i]*beta[localOffset+1]) / factor;
+          prdMnt[i] = wOffsetPtr[i] * zOffsetPtr[i];
+          mean += prdMnt[i];
+          norm += prdMnt[i]*prdMnt[i];
+        }
+        if (norm > 0){
+          mean /= n;
+          norm = sqrt(3 * (norm-n*pow(mean, 2)));
+          for (i=0; i<n; i++){
+            localResMnt[i] += (prdMnt[i]-mean) * beta[localOffset+2] / norm;
+          }
+        }
+      }
+    }
+
+    free(prdMnt);
+
+//#endif
+
+    offset += 3 * (pContCont / 2);
   }
+  
   /* categorical-continuous */
   if (pCatCont > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(2*n);
     double factorZ = sqrt(2);
     for (p=0; p<pCatCont; p+=2){
@@ -132,25 +308,46 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
       /* check if beta is zero */
       allzero = 1;
       for (i=0; i<2*nLevels; i++){
-	if (fabs(beta[offset + i]) > eps){
-	  allzero = 0;
-	  break;
-	}
+  if (fabs(beta[offset + i]) > eps){
+    allzero = 0;
+    break;
+  }
       }
       if (allzero){
-	offset += 2*nLevels;
-	continue;
+  offset += 2*nLevels;
+  continue;
       }
       xOffsetPtr = x + (catcontIndices[p]-1)*n;
       zOffsetPtr = z + (catcontIndices[p+1]-1)*n;
       for (i=0; i<n; i++){
-	result[i] += beta[offset + xOffsetPtr[i]] / factor;
-	result[i] += zOffsetPtr[i] * beta[offset + nLevels + xOffsetPtr[i]] / factorZ;
+  result[i] += beta[offset + xOffsetPtr[i]] / factor;
+  result[i] += zOffsetPtr[i] * beta[offset + nLevels + xOffsetPtr[i]] / factorZ;
       }
       offset += 2*nLevels;
     }
   }
+
+  if (pContCont > 200) {
+    Rprintf("x*b:\n");
+    for (i=0; i<n; ++i){
+      Rprintf("%.30f\n%.20f\n\n", localResMnt[i], localResOpt[i]);
+    }
+    Rf_error("i've seen enough!");
+  }
+  
+  /* aggregate local results */
+  for (i=0; i<n; i++) {
+    result[i] += localResOpt[i];
+  }
+
 #pragma pomp inst end(fista_x_times_beta)
+
+//#ifdef __AVX__
+  _mm_free(localResOpt);
+//#else
+  free(localResMnt);
+//#endif
+
 }
 
 double compute_loglik(const double *restrict y, const double *restrict linear, const double *restrict intercept, const int *restrict nRows, const int *restrict family){
@@ -205,14 +402,23 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
   int *restrict xOffsetPtr;
   double *restrict zOffsetPtr;
   double factor;
+
+  size_t gradLength = pCont + 3 * pContCont/2;
+//#ifdef __AVX__
+  double *restrict gradOpt = malloc(gradLength * sizeof *gradOpt);
+//#else
+  double *restrict gradMnt = malloc(gradLength * sizeof *gradMnt);
+//#endif
+
 #pragma pomp inst begin(fista_compute_gradient)
   /* categorical */
   if (pCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(n);
     for (p=0; p<pCat; p++){
       xOffsetPtr = x + (catIndices[p]-1)*n;
       for (i=0; i<n; i++){
-	gradient[offset + xOffsetPtr[i]] += r[i];
+  gradient[offset + xOffsetPtr[i]] += r[i];
       }
       offset += numLevels[catIndices[p]-1];
     }
@@ -220,18 +426,76 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
       gradient[i] /= factor;
     }
   }
+
   /* continuous */
   if (pCont > 0){
+
+//#ifdef __AVX__
+
+    int nDiv16 = n/16;
     for (p=0; p<pCont; p++){
+
+      int localOffset = offset + p;
       zOffsetPtr = z + (contIndices[p]-1)*n;
-      for (i=0; i<n; i++){
-	gradient[offset] += zOffsetPtr[i] * r[i];
+      __m256d grd0 = _mm256_set_pd(gradient[localOffset], 0, 0, 0);
+
+      for (i=0; i<nDiv16; ++i){
+        __m256d z0 = _mm256_load_pd(zOffsetPtr+i*16);
+        __m256d z1 = _mm256_load_pd(zOffsetPtr+i*16+4);
+        __m256d z2 = _mm256_load_pd(zOffsetPtr+i*16+8);
+        __m256d z3 = _mm256_load_pd(zOffsetPtr+i*16+12);
+        __m256d r0 = _mm256_load_pd(r+i*16);
+        __m256d r1 = _mm256_load_pd(r+i*16+4);
+        __m256d r2 = _mm256_load_pd(r+i*16+8);
+        __m256d r3 = _mm256_load_pd(r+i*16+12);
+
+        __m256d zr0 = _mm256_mul_pd(z0, r0);
+        __m256d zr1 = _mm256_mul_pd(z1, r1);
+        __m256d zr2 = _mm256_mul_pd(z2, r2);
+        __m256d zr3 = _mm256_mul_pd(z3, r3);
+
+        __m256d tmp01 = _mm256_hadd_pd(zr0, zr1);   
+        __m256d tmp23 = _mm256_hadd_pd(zr2, zr3);
+        __m256d permu = _mm256_permute2f128_pd(tmp01, tmp23, 0x21);
+        __m256d blend = _mm256_blend_pd(tmp01, tmp23, 0b1100);
+
+        __m256d dtprd = _mm256_add_pd(permu, blend);
+        
+        grd0 = _mm256_add_pd(grd0, dtprd);
       }
-      ++offset;
+
+      double gradient0;
+      __m256d sum1 = _mm256_add_pd(grd0, _mm256_permute2f128_pd(grd0, grd0, 0x1));
+      __m128d sum2 = _mm_hadd_pd(_mm256_castpd256_pd128(sum1), _mm256_castpd256_pd128(sum1));
+      _mm_store_sd(&gradient0, sum2);
+
+      for (i=nDiv16*16; i<n; ++i){
+        gradient0 += zOffsetPtr[i] * r[i];
+      }
+
+      gradOpt[localOffset] = gradient0;
     }
+
+//#else
+
+    for (p=0; p<pCont; p++){
+      int localOffset = offset + p;
+      zOffsetPtr = z + (contIndices[p]-1)*n;
+      double gradient0 = gradient[localOffset];
+      for (i=0; i<n; i++){
+        gradient0 += zOffsetPtr[i] * r[i];
+      }
+      gradMnt[localOffset] = gradient0;
+    }
+
+//#endif
+
+    offset += pCont;
   }
+
   /* categorical-categorical */
   if (pCatCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(n);
     int nLevels, start = offset;
     int *restrict yOffsetPtr;
@@ -240,7 +504,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
       yOffsetPtr = x + (catcatIndices[p+1]-1)*n;
       nLevels = numLevels[catcatIndices[p]-1];
       for (i=0; i<n; i++){
-	gradient[offset + xOffsetPtr[i] + nLevels*yOffsetPtr[i]] += r[i];
+  gradient[offset + xOffsetPtr[i] + nLevels*yOffsetPtr[i]] += r[i];
       }
       offset += nLevels * numLevels[catcatIndices[p+1]-1];
     }
@@ -248,41 +512,145 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
       gradient[i] /= factor;
     }
   }
+
   /* continuous-continuous */
   if (pContCont > 0){
     factor = sqrt(3);
     double *restrict wOffsetPtr;
-    double *restrict product = malloc(n * sizeof *product);
     double mean, norm;
+
+//#ifdef __AVX__
+
+    int nDiv8 = n/8;
+    double prod;
+    double rprd, rsum;
+
     for (p=0; p<pContCont; p+=2){
+      int localOffset = offset + 3 * (p / 2);
       wOffsetPtr = z + (contcontIndices[p]-1)*n;
       zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
-      for (i=0; i<n; i++){
-	gradient[offset] += wOffsetPtr[i] * r[i];
-	gradient[offset + 1] += zOffsetPtr[i] * r[i];
+
+      __m256d mean1 = _mm256_setzero_pd();
+      __m256d mean2 = _mm256_setzero_pd();
+      __m256d norm1 = _mm256_setzero_pd();
+      __m256d norm2 = _mm256_setzero_pd();
+      __m256d rprd1 = _mm256_setzero_pd();
+      __m256d rprd2 = _mm256_setzero_pd();
+      __m256d rsum1 = _mm256_setzero_pd();
+      __m256d rsum2 = _mm256_setzero_pd();
+
+      __m256d grad201 = _mm256_set_pd(gradient[localOffset],   0, 0, 0);
+      __m256d grad211 = _mm256_set_pd(gradient[localOffset+1], 0, 0, 0);
+      __m256d grad202 = _mm256_setzero_pd();
+      __m256d grad212 = _mm256_setzero_pd();
+
+      for (i=0; i<nDiv8; ++i){
+        __m256d w1 = _mm256_load_pd(wOffsetPtr+i*8);
+        __m256d w2 = _mm256_load_pd(wOffsetPtr+i*8+4);
+        __m256d z1 = _mm256_load_pd(zOffsetPtr+i*8);
+        __m256d z2 = _mm256_load_pd(zOffsetPtr+i*8+4);
+        __m256d r1 = _mm256_load_pd(r+i*8);
+        __m256d r2 = _mm256_load_pd(r+i*8+4);
+
+        __m256d wr1 = _mm256_mul_pd(w1, r1);
+        __m256d wr2 = _mm256_mul_pd(w2, r2);
+        __m256d zr1 = _mm256_mul_pd(z1, r1);
+        __m256d zr2 = _mm256_mul_pd(z2, r2);
+        __m256d prod1 = _mm256_mul_pd(w1, z1);
+        __m256d prod2 = _mm256_mul_pd(w2, z2);
+        __m256d sqpd1 = _mm256_mul_pd(prod1, prod1);
+        __m256d sqpd2 = _mm256_mul_pd(prod2, prod2);
+        __m256d prdr1 = _mm256_mul_pd(prod1, r1);
+        __m256d prdr2 = _mm256_mul_pd(prod2, r2);
+
+        grad201 = _mm256_add_pd(grad201, wr1);
+        grad202 = _mm256_add_pd(grad202, wr2);
+        grad211 = _mm256_add_pd(grad211, zr1);
+        grad212 = _mm256_add_pd(grad212, zr2);
+        mean1 = _mm256_add_pd(mean1, prod1);
+        mean2 = _mm256_add_pd(mean2, prod2);
+        norm1 = _mm256_add_pd(norm1, sqpd1);
+        norm2 = _mm256_add_pd(norm2, sqpd2);
+        rprd1 = _mm256_add_pd(rprd1, prdr1);
+        rprd2 = _mm256_add_pd(rprd2, prdr2);
+        rsum1 = _mm256_add_pd(rsum1, r1);
+        rsum2 = _mm256_add_pd(rsum2, r2);
       }
-      gradient[offset] /= factor;
-      gradient[offset + 1] /= factor;
-      mean = norm = 0.0;
-      for (i=0; i<n; i++){
-	product[i] = wOffsetPtr[i] * zOffsetPtr[i];
-	mean += product[i];
-	norm += product[i]*product[i];
+      
+      double grad20 = sum_to_double(grad201, grad202);
+      double grad21 = sum_to_double(grad211, grad212);
+      mean = sum_to_double(mean1, mean2);
+      norm = sum_to_double(norm1, norm2);
+      rprd = sum_to_double(rprd1, rprd2);
+      rsum = sum_to_double(rsum1, rsum2);
+
+      for (i=nDiv8*8; i<n; ++i){
+        grad20 += wOffsetPtr[i] * r[i];
+        grad21 += zOffsetPtr[i] * r[i];
+        prod = wOffsetPtr[i] * zOffsetPtr[i];
+        mean += prod;
+        norm += prod * prod;
+        rprd += prod * r[i];
+        rsum += r[i];
       }
+
+      gradOpt[localOffset]   = grad20 / factor;
+      gradOpt[localOffset+1] = grad21 / factor;
+
       if (norm > 0){
-	mean /= n;
-	norm = sqrt(3 * (norm-n*pow(mean, 2)));
-	for (i=0; i<n; i++){
-	  gradient[offset + 2] += (product[i]-mean) * r[i];
-	}
-	  gradient[offset + 2] /= norm;
+        mean = mean / n;
+        norm = sqrt(3 * (norm-n*mean*mean));
+        gradOpt[localOffset+2] = gradient[localOffset+2] + (rprd - mean * rsum) / norm;
       }
-      offset += 3;
     }
+
+//#else
+
+    double *restrict product = malloc(n * sizeof *product);
+    double gradient0, gradient1, gradient2;
+
+    for (p=0; p<pContCont; p+=2){
+      int localOffset = offset + 3 * (p / 2);
+      wOffsetPtr = z + (contcontIndices[p]-1)*n;
+      zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+      mean = 0.0;
+      norm = 0.0;
+      gradient0 = gradient[localOffset];
+      gradient1 = gradient[localOffset+1];
+      gradient2 = gradient[localOffset+2];
+      for (i=0; i<n; i++){
+        gradient0 += wOffsetPtr[i] * r[i];
+        gradient1 += zOffsetPtr[i] * r[i];
+        product[i] = wOffsetPtr[i] * zOffsetPtr[i];
+        mean += product[i];
+        norm += product[i]*product[i];
+      }
+      gradient0 = gradient0 / factor;
+      gradient1 = gradient1 / factor;
+      gradMnt[localOffset]   = gradient0;
+      gradMnt[localOffset+1] = gradient1;
+
+      if (norm > 0){
+        mean /= n;
+        norm = sqrt(3 * (norm-n*pow(mean, 2)));
+        for (i=0; i<n; i++){
+          gradient2 += r[i]*(product[i]-mean);
+        }
+        gradient2 = gradient2 / norm;
+        gradMnt[localOffset+2] = gradient2;
+      }
+    }
+
     free(product);
+
+//#endif
+
+    offset += 3 * (pContCont / 2);
+
   }
   /* categorical-continuous */
   if (pCatCont > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(2*n);
     double factorZ = sqrt(2);
     int nLevels;
@@ -291,23 +659,44 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
       xOffsetPtr = x + (catcontIndices[p]-1)*n;
       zOffsetPtr = z + (catcontIndices[p+1]-1)*n;
       for (i=0; i<n; i++){
-	gradient[offset + xOffsetPtr[i]] += r[i];
-	gradient[offset + nLevels + xOffsetPtr[i]] += zOffsetPtr[i] *r[i];
+  gradient[offset + xOffsetPtr[i]] += r[i];
+  gradient[offset + nLevels + xOffsetPtr[i]] += zOffsetPtr[i] *r[i];
       }
       for (i=offset; i<offset+nLevels; i++){
-	gradient[i] /= factor;
+  gradient[i] /= factor;
       }
       for (i=offset+nLevels; i<offset+2*nLevels; i++){
-	gradient[i] /= factorZ;
+  gradient[i] /= factorZ;
       }
       offset += 2*nLevels;
     }
   }
+
+  for (i=0; i<offset; ++i){
+    gradient[i] = gradMnt[i];
+  }
+
+  /*if (offset > 200) {
+    Rprintf("gradients:\n");
+    for (i=0; i<offset; ++i){
+      Rprintf("%.20f\n%.20f\n\n", gradMnt[i], gradOpt[i]);
+    }
+    Rf_error("i've seen enough");
+  }*/
+
   /* normalize by n */
   for (i=0; i<offset; i++){
     gradient[i] /= -n;
   }
+
 #pragma pomp inst end(fista_compute_gradient)
+
+//#ifdef __AVX__
+  free(gradOpt);
+//#else
+  free(gradMnt);
+//#endif
+
 }
 
 void compute_group_info(const int *nVars, const int *restrict numLevels, const int *restrict catIndices, const int *restrict contIndices, const int *restrict catcatIndices, const int *restrict contcontIndices, const int *restrict catcontIndices, int *length, int *groupSizes){
@@ -414,8 +803,8 @@ int check_convergence(const double *restrict beta, const double *restrict gradie
     allzero = 1;
     for (j=0; j<size; j++){
       if (fabs(beta[offset+j]) > eps){
-	allzero = 0;
-	break;
+  allzero = 0;
+  break;
       }
     }
     norm = 0.0;
@@ -477,16 +866,16 @@ void update_intercept(const double *restrict y, const int *restrict nRows, const
     while (iter<1000 && fabs(f)>1e-2){
       fPrime = 0.0;
       for (i=0; i<n; i++){
-	sum = mu + linear[i];
-	fPrime -= (sum > xmax || sum < xmin) ? 0.0 : temp[i]/pow(1+temp[i], 2);
+  sum = mu + linear[i];
+  fPrime -= (sum > xmax || sum < xmin) ? 0.0 : temp[i]/pow(1+temp[i], 2);
       }
       mu -= f/fPrime;
       expMu = exp(-mu);
       f = sumY;
       for (i=0; i<n; i++){
-	temp[i] = expMu * exponent[i];
-	sum = mu + linear[i];
-	f -= sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i]));
+  temp[i] = expMu * exponent[i];
+  sum = mu + linear[i];
+  f -= sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i]));
       }
       ++iter;
     }
