@@ -4,6 +4,9 @@
 #define _POSIX_C_SOURCE 199309L
 
 #include <time.h>
+#include <Rinternals.h>
+#include <R_ext/Rallocators.h>
+#include <stdint.h>
 #include <x86intrin.h>
 
 static inline double sum_to_double(const __m256d x, const __m256d y) {
@@ -23,5 +26,14 @@ static inline int max_alignment(uintptr_t pointer) {
 
 struct timespec timer_start();
 double timer_end(struct timespec);
+
+void* custom_alloc(R_allocator_t *allocator, size_t size);
+void custom_free(R_allocator_t *allocator, void * addr);
+SEXP alloc(int alignment, R_xlen_t length);
+
+SEXP extract_col(SEXP src, SEXP i);
+SEXP import_col(SEXP col, SEXP dest, SEXP i);
+
+SEXP alloc_z(SEXP a, SEXP b, SEXP x);
 
 #endif

@@ -17,7 +17,7 @@ group_lasso = function(X, Z, Y, activeSet, betahat, numLevels, lambda, family, t
   indices = lapply(activeSet, function(x) if (!is.null(x)) c(t(x)) else NULL)
   
   #fit and get new betahat, res, objValue
-  fit = .Call("R_gl_solver", X, Z, Y, n, betahat[1], betahat[-1], double(n), double(n), numLevels, numGroups, indices$cat, indices$cont, indices$catcat, indices$contcont, indices$catcont, lambda, tol, 0.1, maxIter, 0, 0, double(maxIter), ifelse(family=="gaussian", 0, 1), verbose)
+  fit = .Call("R_gl_solver", X, Z, Y, n, betahat[1], betahat[-1], double(n), numLevels, numGroups, indices$cat, indices$cont, indices$catcat, indices$contcont, indices$catcont, lambda, tol, 0.1, maxIter, 0, 0, double(maxIter), ifelse(family=="gaussian", 0, 1), verbose)
   res = fit$res
   objValue = fit$objValue
 

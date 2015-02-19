@@ -349,17 +349,22 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
     }
   }
 
-  /*if (pContCont > 200) {
-    Rprintf("x*b:\n");
-    for (i=0; i<n; ++i){
-      Rprintf("%.30f\n%.20f\n\n", localResMnt[i], localResOpt[i]);
+  /*for (i=0; i<n; ++i) {
+    if (fabs(localResMnt[i]-localResOpt[i]) > 1.0e-12) {
+      Rprintf("%.20f\n%.20f\n%.20f\n%.20f\n\n", 
+        localResMnt[i], localResOpt[i],
+        localResMnt[i]-localResOpt[i], 1.0e-10);
+      Rf_error("i've seen enough!");
     }
-    Rf_error("i've seen enough!");
   }*/
   
   /* aggregate local results */
   for (i=0; i<n; i++) {
+//#ifdef __AVX__
     result[i] += localResOpt[i];
+//#else
+    //result[i] += localResMnt[i];
+//#endif
   }
 
 #pragma pomp inst end(fista_x_times_beta)
@@ -713,20 +718,22 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
     }
   }
 
-  for (i=0; i<offset; ++i){
-    gradient[i] = gradMnt[i];
-  }
-
-  /*if (offset > 200) {
-    Rprintf("gradients:\n");
-    for (i=0; i<offset; ++i){
-      Rprintf("%.20f\n%.20f\n\n", gradMnt[i], gradOpt[i]);
+  for (i=0; i<offset; ++i) {
+    if (fabs(gradMnt[i]-gradOpt[i]) > 1.0e-15) {
+      Rprintf("%.20f\n%.20f\n%.20f\n%.20f\n\n", 
+        gradMnt[i], gradOpt[i],
+        gradMnt[i]-gradOpt[i], 1.0e-15);
+      Rf_error("i've seen enough!");
     }
-    Rf_error("i've seen enough");
-  }*/
+  }
 
   /* normalize by n */
   for (i=0; i<offset; i++){
+//#ifdef __AVX__
+    //gradient[i] = gradOpt[i];
+//#else
+    gradient[i] = gradMnt[i];
+//#endif
     gradient[i] /= -n;
   }
 
@@ -1047,14 +1054,14 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
 #pragma pomp inst end(fista_gl_solver)
 }
 
-SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_residual, SEXP R_linear, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_convergedFlag, SEXP R_objValue, SEXP R_steps, SEXP R_family, SEXP R_verbose){
+SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_linear, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_convergedFlag, SEXP R_objValue, SEXP R_steps, SEXP R_family, SEXP R_verbose){
   PROTECT(R_x = coerceVector(R_x, INTSXP));
   PROTECT(R_z = coerceVector(R_z, REALSXP));
   PROTECT(R_y = coerceVector(R_y, REALSXP));
   PROTECT(R_nRows = coerceVector(R_nRows, INTSXP));
   PROTECT(R_intercept = coerceVector(R_intercept, REALSXP));
   PROTECT(R_beta = coerceVector(R_beta, REALSXP));
-  PROTECT(R_residual = coerceVector(R_residual, REALSXP));
+  //PROTECT(R_residual = coerceVector(R_residual, REALSXP));
   PROTECT(R_linear = coerceVector(R_linear, REALSXP));
   PROTECT(R_numLevels = coerceVector(R_numLevels, INTSXP));
   PROTECT(R_nVars = coerceVector(R_nVars, INTSXP));
@@ -1078,7 +1085,7 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   int *restrict nRows = INTEGER(R_nRows);
   double *restrict intercept = REAL(R_intercept);
   double *restrict beta = REAL(R_beta);
-  double *restrict residual = REAL(R_residual);
+  //double *restrict residual = REAL(R_residual);
   double *restrict linear = REAL(R_linear);
   int *restrict numLevels = INTEGER(R_numLevels);
   int *restrict nVars = INTEGER(R_nVars);
@@ -1095,6 +1102,11 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   double *restrict objValue = REAL(R_objValue);
   double *restrict steps = REAL(R_steps);
   int *restrict family = INTEGER(R_family);
+
+  SEXP R_residual;
+  PROTECT(R_residual = alloc(64, *nRows));
+  double *restrict residual = REAL(R_residual);
+
   Rboolean verbose = FALSE;
   if (LOGICAL(R_verbose)[0] == TRUE) verbose = TRUE;
   gl_solver(x, z, y, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family, verbose);

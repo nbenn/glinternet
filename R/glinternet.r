@@ -12,12 +12,22 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   if (family=="binomial" && !all(Y %in% 0:1)) stop("Error:family=binomial but Y not in {0,1}")
 
                                         #separate into categorical and continuous parts
-  if (pCont > 0) Z = as.matrix(apply(as.matrix(X[, numLevels == 1]), 2, standardize))
+  if (pCont > 0) {
+    Z = .Call("alloc_z", n, pCont, X)
+    for (i in 1:pCont) {
+      vec = .Call("extract_col", X, i)
+      if (length(unique(vec)) == 1) {
+        result = rep(0, length(vec))
+      } else {
+        result = vec - mean(vec)
+        result = result / sqrt(t(result)%*%result)
+      }
+      Z = .Call("import_col", result, Z, i)
+    }
+  }
   else Z = NULL
   if (pCat > 0){
-    catIndices = which(numLevels > 1)
-    levels = numLevels[catIndices]
-    Xcat = as.matrix(X[, catIndices])
+    stop("categorical variables currently not supported. (can be restored!)")
   }
   else {
     levels = NULL
