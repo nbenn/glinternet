@@ -19,8 +19,17 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
 
   // Setting up the localResults arrays
 //#ifdef __AVX__
-  double *restrict localResOpt = _mm_malloc(n * sizeof(double), 64);
-  memset(localResOpt, 0, n * sizeof(double));
+  double *restrict*restrict localResOpt;
+#pragma omp parallel
+  {
+    const int threadCount = omp_get_num_threads();
+    const int threadId = omp_get_thread_num();
+#pragma omp single
+    localResOpt = malloc(threadCount * sizeof(double*));
+#pragma omp barrier
+    localResOpt[threadId] = _mm_malloc(n * sizeof(double), 64);
+    memset(localResOpt[threadId], 0, n * sizeof(double));
+  }
 //#else
   double *restrict localResMnt = malloc(n * sizeof(double));
   memset(localResMnt, 0, n * sizeof(double));
@@ -59,43 +68,51 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
 
 //#ifdef __AVX__
 
-    if(max_alignment((uintptr_t)z) < 64) {
-      Rf_error("alignment of z is %d; need at least 64 byte alignment",
-        max_alignment((uintptr_t)z));
-    }
-    if(max_alignment((uintptr_t)localResOpt) < 64) {
-      Rf_error("alignment of localResOpt is %d; need at least 64 byte alignment",
-        max_alignment((uintptr_t)localResOpt));
-    }
-
     int nDiv8 = n/8;
-    for (p=0; p<pCont; p++){
-      
-      int localOffset = offset + p;
-      /* check if beta is zero */
-      if (fabs(beta[localOffset]) >= eps) {
-        zOffsetPtr = z + (contIndices[p]-1)*n;
-        
-        __m256d beta0 = _mm256_broadcast_sd(beta+localOffset);
-        for (i=0; i<nDiv8; ++i){
-          __m256d z0 = _mm256_load_pd(zOffsetPtr+i*8);
-          __m256d z1 = _mm256_load_pd(zOffsetPtr+i*8+4);
-        
-          __m256d zb0 = _mm256_mul_pd(z0, beta0);
-          __m256d zb1 = _mm256_mul_pd(z1, beta0);
 
-          __m256d res0 = _mm256_load_pd(localResOpt+i*8);
-          __m256d res1 = _mm256_load_pd(localResOpt+i*8+4);
+#pragma omp parallel private(p, i, zOffsetPtr)
+    {
 
-          __m256d prd0 = _mm256_add_pd(res0, zb0);
-          __m256d prd1 = _mm256_add_pd(res1, zb1);
+      const int threadId = omp_get_thread_num();
 
-          _mm256_store_pd(localResOpt+i*8,   prd0);
-          _mm256_store_pd(localResOpt+i*8+4, prd1);
-        }
+      if(max_alignment((uintptr_t)z) < 64) {
+        Rf_error("alignment of z is %d; need at least 64 byte alignment",
+          max_alignment((uintptr_t)z));
+      }
+      if(max_alignment((uintptr_t)localResOpt[threadId]) < 64) {
+        Rf_error("alignment of localResOpt is %d; need at least 64 byte alignment",
+          max_alignment((uintptr_t)localResOpt[threadId]));
+      }
+
+#pragma omp for
+      for (p=0; p<pCont; p++){
         
-        for (i=nDiv8*8; i<n; ++i){
-          localResOpt[i] += zOffsetPtr[i] * beta[localOffset];
+        int localOffset = offset + p;
+        /* check if beta is zero */
+        if (fabs(beta[localOffset]) >= eps) {
+          zOffsetPtr = z + (contIndices[p]-1)*n;
+          
+          __m256d beta0 = _mm256_broadcast_sd(beta+localOffset);
+          for (i=0; i<nDiv8; ++i){
+            __m256d z0 = _mm256_load_pd(zOffsetPtr+i*8);
+            __m256d z1 = _mm256_load_pd(zOffsetPtr+i*8+4);
+          
+            __m256d zb0 = _mm256_mul_pd(z0, beta0);
+            __m256d zb1 = _mm256_mul_pd(z1, beta0);
+
+            __m256d res0 = _mm256_load_pd(localResOpt[threadId]+i*8);
+            __m256d res1 = _mm256_load_pd(localResOpt[threadId]+i*8+4);
+
+            __m256d prd0 = _mm256_add_pd(res0, zb0);
+            __m256d prd1 = _mm256_add_pd(res1, zb1);
+
+            _mm256_store_pd(localResOpt[threadId]+i*8,   prd0);
+            _mm256_store_pd(localResOpt[threadId]+i*8+4, prd1);
+          }
+          
+          for (i=nDiv8*8; i<n; ++i){
+            localResOpt[threadId][i] += zOffsetPtr[i] * beta[localOffset];
+          }
         }
       }
     }
@@ -151,136 +168,145 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   /* continuous-continuous */
   if (pContCont > 0){
 
-    double *restrict wOffsetPtr;
     factor = sqrt(3);
-    double mean, norm;
 
 //#ifdef __AVX__
 
     int nDiv8 = n/8;
-    double *restrict prdOpt = _mm_malloc(n * sizeof *prdOpt, 64);
 
-    if(max_alignment((uintptr_t)localResOpt) < 64) {
-      Rf_error("alignment of localResOpt is %d; need at least 64 byte alignment",
-        max_alignment((uintptr_t)localResOpt));
-    }
-    if(max_alignment((uintptr_t)z) < 64) {
-      Rf_error("alignment of z is %d; need at least 64 byte alignment",
-        max_alignment((uintptr_t)z));
-    }
-    if(max_alignment((uintptr_t)prdOpt) < 64) {
-      Rf_error("alignment of prdOpt is %d; need at least 64 byte alignment",
-        max_alignment((uintptr_t)prdOpt));
-    }
+#pragma omp parallel private(p, i, allzero, zOffsetPtr)
+    {
+      const int threadId = omp_get_thread_num();
 
-    for (p=0; p<pContCont; p+=2){
-      int localOffset = offset + 3 * (p / 2);
-      /* check if beta is zero */
-      allzero = 1;
-      for (i=0; i<3; i++){
-        if (fabs(beta[localOffset + i]) > eps){
-          allzero = 0;
-          break;
-        }
+      double *restrict wOffsetPtr;
+      double mean, norm;
+      double *restrict prdOpt = _mm_malloc(n * sizeof *prdOpt, 64);
+
+      if(max_alignment((uintptr_t)localResOpt[threadId]) < 64) {
+        Rf_error("alignment of localResOpt is %d; need at least 64 byte alignment",
+          max_alignment((uintptr_t)localResOpt[threadId]));
       }
-      if (!allzero){
-        wOffsetPtr = z + (contcontIndices[p]-1)*n;
-        zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
-        __m256d mean1 = _mm256_setzero_pd();
-        __m256d norm1 = _mm256_setzero_pd();
-        __m256d mean2 = _mm256_setzero_pd();
-        __m256d norm2 = _mm256_setzero_pd();
-        __m256d beta0 = _mm256_broadcast_sd(beta+localOffset);
-        __m256d beta1 = _mm256_broadcast_sd(beta+localOffset+1);
-        __m256d factr = _mm256_set1_pd(1.0/factor);
-        for (i=0; i<nDiv8; ++i){
-          __m256d z0 = _mm256_load_pd(zOffsetPtr+i*8);
-          __m256d z1 = _mm256_load_pd(zOffsetPtr+i*8+4);
-          __m256d w0 = _mm256_load_pd(wOffsetPtr+i*8);
-          __m256d w1 = _mm256_load_pd(wOffsetPtr+i*8+4);
+      if(max_alignment((uintptr_t)z) < 64) {
+        Rf_error("alignment of z is %d; need at least 64 byte alignment",
+          max_alignment((uintptr_t)z));
+      }
+      if(max_alignment((uintptr_t)prdOpt) < 64) {
+        Rf_error("alignment of prdOpt is %d; need at least 64 byte alignment",
+          max_alignment((uintptr_t)prdOpt));
+      }
 
-          __m256d wb0 = _mm256_mul_pd(w0, beta0);
-          __m256d wb1 = _mm256_mul_pd(w1, beta0);
-          __m256d zb0 = _mm256_mul_pd(z0, beta1);
-          __m256d zb1 = _mm256_mul_pd(z1, beta1);
-
-          __m256d wzb0 = _mm256_add_pd(wb0, zb0);
-          __m256d wzb1 = _mm256_add_pd(wb1, zb1);
-
-          __m256d wzbf0 = _mm256_mul_pd(wzb0, factr);
-          __m256d wzbf1 = _mm256_mul_pd(wzb1, factr);
-
-          __m256d res0 = _mm256_load_pd(localResOpt+i*8);
-          __m256d res1 = _mm256_load_pd(localResOpt+i*8+4);
-
-          __m256d wzbfr0 = _mm256_add_pd(res0, wzbf0);
-          __m256d wzbfr1 = _mm256_add_pd(res1, wzbf1);
-
-          _mm256_store_pd(localResOpt+i*8,   wzbfr0);
-          _mm256_store_pd(localResOpt+i*8+4, wzbfr1);
-
-          __m256d prod1 = _mm256_mul_pd(w0, z0);
-          __m256d prod2 = _mm256_mul_pd(w1, z1);
-          __m256d sqpd1 = _mm256_mul_pd(prod1, prod1);
-          __m256d sqpd2 = _mm256_mul_pd(prod2, prod2);
-
-          mean1 = _mm256_add_pd(mean1, prod1);
-          mean2 = _mm256_add_pd(mean2, prod2);
-          norm1 = _mm256_add_pd(norm1, sqpd1);
-          norm2 = _mm256_add_pd(norm2, sqpd2);
-
-          _mm256_store_pd(prdOpt+i*8,   prod1);
-          _mm256_store_pd(prdOpt+i*8+4, prod2);
-        }
-
-        mean = sum_to_double(mean1, mean2);
-        norm = sum_to_double(norm1, norm2);
-
-        for (i=nDiv8*8; i<n; ++i){
-          localResOpt[i] += (wOffsetPtr[i]*beta[localOffset] + zOffsetPtr[i]*beta[localOffset+1]) / factor;
-          prdOpt[i] = wOffsetPtr[i] * zOffsetPtr[i];
-          mean += prdOpt[i];
-          norm += prdOpt[i]*prdOpt[i];
-        }
-
-        if (norm > 0){
-          mean /= n;
-          norm = sqrt(3 * (norm-n*mean*mean));
-          double betanorm = beta[localOffset+2] / norm;
-          __m256d bnr = _mm256_set1_pd(betanorm);          
-          __m256d men = _mm256_set1_pd(mean);
-
-          for (i=0; i<nDiv8; ++i){
-            __m256d prod0 = _mm256_load_pd(prdOpt+i*8);
-            __m256d prod1 = _mm256_load_pd(prdOpt+i*8+4);
-
-            __m256d prmn0 = _mm256_sub_pd(prod0, men);
-            __m256d prmn1 = _mm256_sub_pd(prod1, men);
-
-            __m256d pmbn0 = _mm256_mul_pd(prmn0, bnr);
-            __m256d pmbn1 = _mm256_mul_pd(prmn1, bnr);
-
-            __m256d res0 = _mm256_load_pd(localResOpt+i*8);
-            __m256d res1 = _mm256_load_pd(localResOpt+i*8+4);
-
-            __m256d pmbnr0 = _mm256_add_pd(res0, pmbn0);
-            __m256d pmbnr1 = _mm256_add_pd(res1, pmbn1);
-
-            _mm256_store_pd(localResOpt+i*8,   pmbnr0);
-            _mm256_store_pd(localResOpt+i*8+4, pmbnr1);
+#pragma omp for
+      for (p=0; p<pContCont; p+=2){
+        int localOffset = offset + 3 * (p / 2);
+        /* check if beta is zero */
+        allzero = 1;
+        for (i=0; i<3; i++){
+          if (fabs(beta[localOffset + i]) > eps){
+            allzero = 0;
+            break;
           }
+        }
+        if (!allzero){
+          wOffsetPtr = z + (contcontIndices[p]-1)*n;
+          zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+          __m256d mean1 = _mm256_setzero_pd();
+          __m256d norm1 = _mm256_setzero_pd();
+          __m256d mean2 = _mm256_setzero_pd();
+          __m256d norm2 = _mm256_setzero_pd();
+          __m256d beta0 = _mm256_broadcast_sd(beta+localOffset);
+          __m256d beta1 = _mm256_broadcast_sd(beta+localOffset+1);
+          __m256d factr = _mm256_set1_pd(1.0/factor);
+          for (i=0; i<nDiv8; ++i){
+            __m256d z0 = _mm256_load_pd(zOffsetPtr+i*8);
+            __m256d z1 = _mm256_load_pd(zOffsetPtr+i*8+4);
+            __m256d w0 = _mm256_load_pd(wOffsetPtr+i*8);
+            __m256d w1 = _mm256_load_pd(wOffsetPtr+i*8+4);
+
+            __m256d wb0 = _mm256_mul_pd(w0, beta0);
+            __m256d wb1 = _mm256_mul_pd(w1, beta0);
+            __m256d zb0 = _mm256_mul_pd(z0, beta1);
+            __m256d zb1 = _mm256_mul_pd(z1, beta1);
+
+            __m256d wzb0 = _mm256_add_pd(wb0, zb0);
+            __m256d wzb1 = _mm256_add_pd(wb1, zb1);
+
+            __m256d wzbf0 = _mm256_mul_pd(wzb0, factr);
+            __m256d wzbf1 = _mm256_mul_pd(wzb1, factr);
+
+            __m256d res0 = _mm256_load_pd(localResOpt[threadId]+i*8);
+            __m256d res1 = _mm256_load_pd(localResOpt[threadId]+i*8+4);
+
+            __m256d wzbfr0 = _mm256_add_pd(res0, wzbf0);
+            __m256d wzbfr1 = _mm256_add_pd(res1, wzbf1);
+
+            _mm256_store_pd(localResOpt[threadId]+i*8,   wzbfr0);
+            _mm256_store_pd(localResOpt[threadId]+i*8+4, wzbfr1);
+
+            __m256d prod1 = _mm256_mul_pd(w0, z0);
+            __m256d prod2 = _mm256_mul_pd(w1, z1);
+            __m256d sqpd1 = _mm256_mul_pd(prod1, prod1);
+            __m256d sqpd2 = _mm256_mul_pd(prod2, prod2);
+
+            mean1 = _mm256_add_pd(mean1, prod1);
+            mean2 = _mm256_add_pd(mean2, prod2);
+            norm1 = _mm256_add_pd(norm1, sqpd1);
+            norm2 = _mm256_add_pd(norm2, sqpd2);
+
+            _mm256_store_pd(prdOpt+i*8,   prod1);
+            _mm256_store_pd(prdOpt+i*8+4, prod2);
+          }
+
+          mean = sum_to_double(mean1, mean2);
+          norm = sum_to_double(norm1, norm2);
 
           for (i=nDiv8*8; i<n; ++i){
-            localResOpt[i] += (prdOpt[i]-mean) * betanorm;
+            localResOpt[threadId][i] += (wOffsetPtr[i]*beta[localOffset] + zOffsetPtr[i]*beta[localOffset+1]) / factor;
+            prdOpt[i] = wOffsetPtr[i] * zOffsetPtr[i];
+            mean += prdOpt[i];
+            norm += prdOpt[i]*prdOpt[i];
+          }
+
+          if (norm > 0){
+            mean /= n;
+            norm = sqrt(3 * (norm-n*mean*mean));
+            double betanorm = beta[localOffset+2] / norm;
+            __m256d bnr = _mm256_set1_pd(betanorm);          
+            __m256d men = _mm256_set1_pd(mean);
+
+            for (i=0; i<nDiv8; ++i){
+              __m256d prod0 = _mm256_load_pd(prdOpt+i*8);
+              __m256d prod1 = _mm256_load_pd(prdOpt+i*8+4);
+
+              __m256d prmn0 = _mm256_sub_pd(prod0, men);
+              __m256d prmn1 = _mm256_sub_pd(prod1, men);
+
+              __m256d pmbn0 = _mm256_mul_pd(prmn0, bnr);
+              __m256d pmbn1 = _mm256_mul_pd(prmn1, bnr);
+
+              __m256d res0 = _mm256_load_pd(localResOpt[threadId]+i*8);
+              __m256d res1 = _mm256_load_pd(localResOpt[threadId]+i*8+4);
+
+              __m256d pmbnr0 = _mm256_add_pd(res0, pmbn0);
+              __m256d pmbnr1 = _mm256_add_pd(res1, pmbn1);
+
+              _mm256_store_pd(localResOpt[threadId]+i*8,   pmbnr0);
+              _mm256_store_pd(localResOpt[threadId]+i*8+4, pmbnr1);
+            }
+
+            for (i=nDiv8*8; i<n; ++i){
+              localResOpt[threadId][i] += (prdOpt[i]-mean) * betanorm;
+            }
           }
         }
       }
-    }
 
-    _mm_free(prdOpt);
+      _mm_free(prdOpt);
+    }
 
 //#else
 
+    double mean, norm;
+    double *restrict wOffsetPtr;
     double *restrict prdMnt = malloc(n * sizeof *prdMnt);
 
     for (p=0; p<pContCont; p+=2){
@@ -349,31 +375,39 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
     }
   }
 
-  /*for (i=0; i<n; ++i) {
+  for (i=0; i<n; ++i) {
     if (fabs(localResMnt[i]-localResOpt[i]) > 1.0e-12) {
       Rprintf("%.20f\n%.20f\n%.20f\n%.20f\n\n", 
         localResMnt[i], localResOpt[i],
         localResMnt[i]-localResOpt[i], 1.0e-10);
       Rf_error("i've seen enough!");
     }
-  }*/
+  }
   
   /* aggregate local results */
-  for (i=0; i<n; i++) {
 //#ifdef __AVX__
-    result[i] += localResOpt[i];
-//#else
-    //result[i] += localResMnt[i];
-//#endif
+#pragma omp parallel private(i) 
+  {
+    const int threadCount = omp_get_num_threads();
+    const int threadId = omp_get_thread_num();
+#pragma omp for
+      for (i=0; i<n; i++) {
+        for (int j=0; j<threadCount; j++)
+            result[i] += localResOpt[j][i];
+      }
+      _mm_free(localResOpt[threadId]);
+#pragma omp barrier
+#pragma omp single 
+      free((void*) localResOpt);
   }
-
-#pragma pomp inst end(fista_x_times_beta)
-
-//#ifdef __AVX__
-  _mm_free(localResOpt);
 //#else
+  for (i=0; i<n; i++) {
+    //result[i] += localResMnt[i];
+  }
   free(localResMnt);
 //#endif
+  
+#pragma pomp inst end(fista_x_times_beta)
 
 }
 
@@ -718,14 +752,14 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
     }
   }
 
-  for (i=0; i<offset; ++i) {
+  /*for (i=0; i<offset; ++i) {
     if (fabs(gradMnt[i]-gradOpt[i]) > 1.0e-15) {
       Rprintf("%.20f\n%.20f\n%.20f\n%.20f\n\n", 
         gradMnt[i], gradOpt[i],
         gradMnt[i]-gradOpt[i], 1.0e-15);
       Rf_error("i've seen enough!");
     }
-  }
+  }*/
 
   /* normalize by n */
   for (i=0; i<offset; i++){

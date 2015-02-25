@@ -9,6 +9,10 @@
 #include <stdint.h>
 #include <x86intrin.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 static inline double sum_to_double(const __m256d x, const __m256d y) {
   const __m256d sum0 = _mm256_add_pd(x, y);
   const __m256d sum1 = _mm256_add_pd(sum0, _mm256_permute2f128_pd(sum0, sum0, 0x1));
