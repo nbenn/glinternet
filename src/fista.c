@@ -18,13 +18,13 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   double factor;
 
   // Setting up the localResults arrays
-//#ifdef __AVX__
+#ifdef __AVX__
   double *restrict localResOpt = _mm_malloc(n * sizeof(double), 64);
   memset(localResOpt, 0, n * sizeof(double));
-//#else
+#else
   double *restrict localResMnt = malloc(n * sizeof(double));
   memset(localResMnt, 0, n * sizeof(double));
-//#endif
+#endif
 
 #pragma pomp inst begin(fista_x_times_beta)
   
@@ -57,7 +57,7 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   /* continuous */
   if (pCont > 0){
 
-//#ifdef __AVX__
+#ifdef __AVX__
 
     if(max_alignment((uintptr_t)z) < 64) {
       Rf_error("alignment of z is %d; need at least 64 byte alignment",
@@ -100,7 +100,7 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
       }
     }
 
-//#else
+#else
 
     for (p=0; p<pCont; p++){
       int localOffset = offset + p;
@@ -113,7 +113,7 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
       }
     }
 
-//#endif
+#endif
 
     offset += pCont;
   }
@@ -155,7 +155,7 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
     factor = sqrt(3);
     double mean, norm;
 
-//#ifdef __AVX__
+#ifdef __AVX__
 
     int nDiv8 = n/8;
     double *restrict prdOpt = _mm_malloc(n * sizeof *prdOpt, 64);
@@ -279,7 +279,7 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
 
     _mm_free(prdOpt);
 
-//#else
+#else
 
     double *restrict prdMnt = malloc(n * sizeof *prdMnt);
 
@@ -315,7 +315,7 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
 
     free(prdMnt);
 
-//#endif
+#endif
 
     offset += 3 * (pContCont / 2);
   }
@@ -360,20 +360,20 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   
   /* aggregate local results */
   for (i=0; i<n; i++) {
-//#ifdef __AVX__
+#ifdef __AVX__
     result[i] += localResOpt[i];
-//#else
-    //result[i] += localResMnt[i];
-//#endif
+#else
+    result[i] += localResMnt[i];
+#endif
   }
 
 #pragma pomp inst end(fista_x_times_beta)
 
-//#ifdef __AVX__
+#ifdef __AVX__
   _mm_free(localResOpt);
-//#else
+#else
   free(localResMnt);
-//#endif
+#endif
 
 }
 
@@ -431,11 +431,11 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
   double factor;
 
   size_t gradLength = pCont + 3 * pContCont/2;
-//#ifdef __AVX__
+#ifdef __AVX__
   double *restrict gradOpt = malloc(gradLength * sizeof *gradOpt);
-//#else
+#else
   double *restrict gradMnt = malloc(gradLength * sizeof *gradMnt);
-//#endif
+#endif
 
 #pragma pomp inst begin(fista_compute_gradient)
   /* categorical */
@@ -457,7 +457,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
   /* continuous */
   if (pCont > 0){
 
-//#ifdef __AVX__
+#ifdef __AVX__
 
     int nDiv16 = n/16;
 
@@ -513,7 +513,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
       gradOpt[localOffset] = gradient0;
     }
 
-//#else
+#else
 
     for (p=0; p<pCont; p++){
       int localOffset = offset + p;
@@ -525,7 +525,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
       gradMnt[localOffset] = gradient0;
     }
 
-//#endif
+#endif
 
     offset += pCont;
   }
@@ -556,7 +556,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
     double *restrict wOffsetPtr;
     double mean, norm;
 
-//#ifdef __AVX__
+#ifdef __AVX__
 
     int nDiv8 = n/8;
     double prod;
@@ -650,7 +650,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
       }
     }
 
-//#else
+#else
 
     double *restrict product = malloc(n * sizeof *product);
     double gradient0, gradient1, gradient2;
@@ -689,7 +689,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
 
     free(product);
 
-//#endif
+#endif
 
     offset += 3 * (pContCont / 2);
 
@@ -718,32 +718,32 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
     }
   }
 
-  for (i=0; i<offset; ++i) {
+  /*for (i=0; i<offset; ++i) {
     if (fabs(gradMnt[i]-gradOpt[i]) > 1.0e-15) {
       Rprintf("%.20f\n%.20f\n%.20f\n%.20f\n\n", 
         gradMnt[i], gradOpt[i],
         gradMnt[i]-gradOpt[i], 1.0e-15);
       Rf_error("i've seen enough!");
     }
-  }
+  }*/
 
   /* normalize by n */
   for (i=0; i<offset; i++){
-//#ifdef __AVX__
-    //gradient[i] = gradOpt[i];
-//#else
+#ifdef __AVX__
+    gradient[i] = gradOpt[i];
+#else
     gradient[i] = gradMnt[i];
-//#endif
+#endif
     gradient[i] /= -n;
   }
 
 #pragma pomp inst end(fista_compute_gradient)
 
-//#ifdef __AVX__
+#ifdef __AVX__
   free(gradOpt);
-//#else
+#else
   free(gradMnt);
-//#endif
+#endif
 
 }
 
