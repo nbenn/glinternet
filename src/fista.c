@@ -16,9 +16,13 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   int *restrict xOffsetPtr;
   double *restrict zOffsetPtr;
   double factor;
+  // Setting up the localResults arrays
+  double *restrict localResults = malloc(n * sizeof(double));
+  memset(localResults, 0, n * sizeof(double));
 #pragma pomp inst begin(fista_x_times_beta)
   /* categorical */
   if (pCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(n);
     for (p=0; p<pCat; p++){
       nLevels = numLevels[catIndices[p]-1];
@@ -44,20 +48,20 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   /* continuous */
   if (pCont > 0){
     for (p=0; p<pCont; p++){
+      int localOffset = offset + p;
       /* check if beta is zero */
-      if (fabs(beta[offset]) < eps){
-	++offset;
-	continue;
+      if (fabs(beta[localOffset]) >= eps) {
+        zOffsetPtr = z + (contIndices[p]-1)*n;
+        for (i=0; i<n; i++) {
+          localResults[i] += zOffsetPtr[i] * beta[localOffset];
+        }
       }
-      zOffsetPtr = z + (contIndices[p]-1)*n;
-      for (i=0; i<n; i++){
-	result[i] += zOffsetPtr[i] * beta[offset];
-      }
-      ++offset;
     }
+    offset += pCont;
   }
   /* categorical-categorical */
   if (pCatCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     int len;
     int *restrict yOffsetPtr;
     factor = sqrt(n);
@@ -91,40 +95,40 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
     double *restrict product = malloc(n * sizeof *product);
     double mean, norm;
     for (p=0; p<pContCont; p+=2){
+      int localOffset = offset + 3 * (p / 2);
       /* check if beta is zero */
       allzero = 1;
       for (i=0; i<3; i++){
-	if (fabs(beta[offset + i]) > eps){
-	  allzero = 0;
-	  break;
-	}
+        if (fabs(beta[localOffset + i]) > eps){
+          allzero = 0;
+          break;
+        }
       }
-      if (allzero){
-	offset += 3;
-	continue;
+      if (!allzero){
+        wOffsetPtr = z + (contcontIndices[p]-1)*n;
+        zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+        mean = norm = 0.0;
+        for (i=0; i<n; i++){
+          localResults[i] += (wOffsetPtr[i]*beta[localOffset] + zOffsetPtr[i]*beta[localOffset+1]) / factor;
+          product[i] = wOffsetPtr[i] * zOffsetPtr[i];
+          mean += product[i];
+          norm += product[i]*product[i];
+        }
+        if (norm > 0){
+          mean /= n;
+          norm = sqrt(3 * (norm-n*pow(mean, 2)));
+          for (i=0; i<n; i++){
+            localResults[i] += (product[i]-mean) * beta[localOffset+2] / norm;
+          }
+        }
       }
-      wOffsetPtr = z + (contcontIndices[p]-1)*n;
-      zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
-      mean = norm = 0.0;
-      for (i=0; i<n; i++){
-	result[i] += (wOffsetPtr[i]*beta[offset] + zOffsetPtr[i]*beta[offset+1]) / factor;
-	product[i] = wOffsetPtr[i] * zOffsetPtr[i];
-	mean += product[i];
-	norm += product[i]*product[i];
-      }
-      if (norm > 0){
-	mean /= n;
-	norm = sqrt(3 * (norm-n*pow(mean, 2)));
-	for (i=0; i<n; i++){
-	  result[i] += (product[i]-mean) * beta[offset+2] / norm;
-	}
-      }
-      offset += 3;
     }
+    offset += 3 * (pContCont / 2);
     free(product);
   }
   /* categorical-continuous */
   if (pCatCont > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(2*n);
     double factorZ = sqrt(2);
     for (p=0; p<pCatCont; p+=2){
@@ -150,6 +154,11 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
       offset += 2*nLevels;
     }
   }
+  /* aggregate local results */
+  for (i=0; i<n; i++) {
+    result[i] += localResults[i];
+  }
+  free(localResults);
 #pragma pomp inst end(fista_x_times_beta)
 }
 
@@ -208,6 +217,7 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
 #pragma pomp inst begin(fista_compute_gradient)
   /* categorical */
   if (pCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(n);
     for (p=0; p<pCat; p++){
       xOffsetPtr = x + (catIndices[p]-1)*n;
@@ -223,15 +233,19 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
   /* continuous */
   if (pCont > 0){
     for (p=0; p<pCont; p++){
+      int localOffset = offset + p;
       zOffsetPtr = z + (contIndices[p]-1)*n;
+      double gradient0 = gradient[localOffset];
       for (i=0; i<n; i++){
-	gradient[offset] += zOffsetPtr[i] * r[i];
+        gradient0 += zOffsetPtr[i] * r[i];
       }
-      ++offset;
+      gradient[localOffset] = gradient0;
     }
+    offset += pCont;
   }
   /* categorical-categorical */
   if (pCatCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(n);
     int nLevels, start = offset;
     int *restrict yOffsetPtr;
@@ -253,36 +267,44 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
     factor = sqrt(3);
     double *restrict wOffsetPtr;
     double *restrict product = malloc(n * sizeof *product);
-    double mean, norm;
     for (p=0; p<pContCont; p+=2){
+      int localOffset = offset + 3 * (p / 2);
       wOffsetPtr = z + (contcontIndices[p]-1)*n;
       zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+      double mean = 0.0;
+      double norm = 0.0;
+      //double rprd = 0.0;
+      //double rsum = 0.0;
+      double gradient0 = gradient[localOffset];
+      double gradient1 = gradient[localOffset+1];
+      double gradient2 = gradient[localOffset+2];
       for (i=0; i<n; i++){
-	gradient[offset] += wOffsetPtr[i] * r[i];
-	gradient[offset + 1] += zOffsetPtr[i] * r[i];
+        gradient0 += wOffsetPtr[i] * r[i];
+        gradient1 += zOffsetPtr[i] * r[i];
+        product[i] = wOffsetPtr[i] * zOffsetPtr[i];
+        mean += product[i];
+        norm += product[i]*product[i];
+        //rprd += product[i]*r[i];
+        //rsum += r[i];
       }
-      gradient[offset] /= factor;
-      gradient[offset + 1] /= factor;
-      mean = norm = 0.0;
-      for (i=0; i<n; i++){
-	product[i] = wOffsetPtr[i] * zOffsetPtr[i];
-	mean += product[i];
-	norm += product[i]*product[i];
-      }
+      gradient[localOffset]   = gradient0 / factor;
+      gradient[localOffset+1] = gradient1 / factor;
       if (norm > 0){
-	mean /= n;
-	norm = sqrt(3 * (norm-n*pow(mean, 2)));
-	for (i=0; i<n; i++){
-	  gradient[offset + 2] += (product[i]-mean) * r[i];
-	}
-	  gradient[offset + 2] /= norm;
+        mean /= n;
+        norm = sqrt(3 * (norm-n*pow(mean, 2)));
+        //gradient[localOffset + 2] += (rprd - mean * rsum);
+        for (i=0; i<n; i++){
+          gradient2 += r[i]*(product[i]-mean);
+        }
+        gradient[localOffset+2] = gradient2 / norm;
       }
-      offset += 3;
     }
     free(product);
+    offset += 3 * (pContCont / 2);
   }
   /* categorical-continuous */
   if (pCatCont > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(2*n);
     double factorZ = sqrt(2);
     int nLevels;

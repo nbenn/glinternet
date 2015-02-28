@@ -50,9 +50,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     .Call("retry_alloc_z", Z, cpuNodeInfo)
   }
                                         #compute variable norms
-  res = .Call("alloc_res", Y)
-  #res = Y - mean(Y)
-  #res = .Call("copy_vec", Y - mean(Y), res)
+  res = Y - mean(Y)
   candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, cpuNodeInfo, screenLimit, verbose)
  
  
@@ -100,8 +98,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
       }
       activeSet[[i]] = solution$activeSet
       betahat[[i]] = solution$betahat
-      res = .Call("copy_vec", solution$res, res)
-      #res = solution$res
+      res = solution$res
       objValue[i] = solution$objValue
       #check kkt conditions on the rest
       if (verbose) time.kkt <- proc.time()  
