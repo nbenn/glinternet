@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <R.h>
-#include <Rinternals.h>
 #include <omp.h>
 #include <numa.h>
 #include <sched.h>

@@ -95,7 +95,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     while (TRUE){
       #group lasso on strong set
       if (verbose) time.gl <- proc.time()  
-      solution = group_lasso(Xcat, Z, Y, activeSet[[i]], betahat[[i]], levels, lambda[i], family, tol, maxIter, verbose)
+      solution = group_lasso(Xcat, Z, Y, activeSet[[i]], betahat[[i]], levels, lambda[i], family, tol, maxIter, cpuNodeInfo, verbose)
       if (verbose) {
         time.gl <- proc.time() - time.gl
         cat("--> time group lasso: ", time.gl[1], "(user)\n",
