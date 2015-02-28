@@ -5,9 +5,7 @@
 #include <string.h>
 #include <R.h>
 #include <Rinternals.h>
-#ifdef _OPENMP
-# include <omp.h>
-#endif
+#include <omp.h>
 #include <numa.h>
 #include <sched.h>
 
@@ -611,7 +609,7 @@ void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, f
     __m256 rprd2_ps = _mm256_setzero_ps();
     __m256 rsum1_ps = _mm256_setzero_ps();
     __m256 rsum2_ps = _mm256_setzero_ps();
-    
+
     for (j=0; j<nRowsDiv16; ++j) {
       /* fma instructions could be used if avx2 were supported;
          not the case on euler :( */

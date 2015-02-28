@@ -104,18 +104,6 @@ SEXP get_cpu_node_usage() {
     if(INTEGER(node_used)[i] != 0) INTEGER(num_used_nodes)[0]++;
   }
 
-  /*Rprintf("\n%d CPUs out of %d are used.\n", INTEGER(num_used_cpus)[0], INTEGER(max_num_cpus)[0]);
-
-  for (i = 0; i < INTEGER(max_num_cpus)[0]; ++i) {
-    Rprintf("i: %d, cpu_to_node: %d\n", i, INTEGER(cpu_to_node)[i]);
-  }
-
-  Rprintf("\n%d nodes out of %d are used.\n", INTEGER(num_used_nodes)[0], INTEGER(max_num_nodes)[0]);
-
-  for (i = 0; i < INTEGER(max_num_nodes)[0]; ++i) {
-    Rprintf("i: %d, node_used: %d\n", i, INTEGER(node_used)[i]);
-  }*/
-
   SEXP result, result_names;
   char *names[6] = {
     "cpu_to_node",
@@ -216,7 +204,7 @@ SEXP alloc(int alignment, R_xlen_t length, size_t node) {
 static void finalize_singles_array_pointer(SEXP ext) {
   if (NULL == R_ExternalPtrAddr(ext))
     return;
-  Rprintf("finalizing singles array\n");
+  //Rprintf("finalizing singles array\n");
   float *ptr = (float *) R_ExternalPtrAddr(ext);
   _mm_free(ptr);
   R_ClearExternalPtr(ext);
@@ -434,7 +422,7 @@ SEXP import_col(SEXP col, SEXP dest, SEXP i, SEXP info) {
   PROTECT(i = coerceVector(i, INTSXP));
   int col_idx = *INTEGER(i);
   col_idx -= 1;
-  
+
   SEXP node_used, max_num_nodes;
   PROTECT(node_used      = VECTOR_ELT(info, 1));
   PROTECT(max_num_nodes  = VECTOR_ELT(info, 3));

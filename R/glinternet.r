@@ -25,8 +25,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     levels = NULL
     Xcat = NULL
   }
+  if (verbose) time.alloc <- proc.time()  
   if (pCont > 0) {
-    #Z = as.matrix(apply(as.matrix(X[, numLevels == 1]), 2, standardize))
     Z = .Call("alloc_z", n, pCont, X, cpuNodeInfo)
     for (i in 1:pCont) {
       vec = .Call("extract_col", X, i)
@@ -48,6 +48,11 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     rm(X)
     gc()
     .Call("retry_alloc_z", Z, cpuNodeInfo)
+  }
+  if (verbose) {
+    time.alloc <- proc.time() - time.alloc
+    cat("-> time alloc: ", time.alloc[1], "(user)\n",
+      rep(" ", 7), time.alloc[3], "(elapsed)\n")
   }
                                         #compute variable norms
   res = Y - mean(Y)
@@ -143,7 +148,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   if(!exists("X")) {
     rm(Z)
     gc()
-    #tempdir <- Sys.getenv("TMPDIR")
+    if(!exists("tempdir")) stop("Error: Was X really saved to disk?")
     X = readRDS(paste(tempdir, "/originalX.rds", sep=""))
   }
 
