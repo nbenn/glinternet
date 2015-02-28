@@ -585,81 +585,6 @@ void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, f
     float mean, norm, temp, rprd, rsum;
     float product;
 
-#ifdef __AVX__
-
-    if(max_alignment((uintptr_t)x) < 64) {
-      Rf_error("alignment of x is %d; need at least 64 byte alignment", max_alignment((uintptr_t)x));
-    }
-    if(max_alignment((uintptr_t)r) < 64) {
-      Rf_error("alignment of r is %d; need at least 64 byte alignment", max_alignment((uintptr_t)r));
-    }
-    
-    int nRowsDiv16 = n/16;
-
-#pragma omp for
-  for (i=0; i<p; ++i) {
-    xOffset = ((size_t)xIndices[i] - 1)*n;
-    yOffset = ((size_t)yIndices[i] - 1)*n;
-    __m256 mean1_ps = _mm256_setzero_ps();
-    __m256 mean2_ps = _mm256_setzero_ps();
-    __m256 norm1_ps = _mm256_setzero_ps();
-    __m256 norm2_ps = _mm256_setzero_ps();
-    __m256 rprd1_ps = _mm256_setzero_ps();
-    __m256 rprd2_ps = _mm256_setzero_ps();
-    __m256 rsum1_ps = _mm256_setzero_ps();
-    __m256 rsum2_ps = _mm256_setzero_ps();
-
-    for (j=0; j<nRowsDiv16; ++j) {
-      /* fma instructions could be used if avx2 were supported;
-         not the case on euler :( */
-      __m256 xx1_ps = _mm256_load_ps(x+xOffset+j*16);
-      __m256 xx2_ps = _mm256_load_ps(x+xOffset+j*16+8);
-      __m256 xy1_ps = _mm256_load_ps(x+yOffset+j*16);
-      __m256 xy2_ps = _mm256_load_ps(x+yOffset+j*16+8);
-      __m256 r1_ps  = _mm256_load_ps(r+j*16);
-      __m256 r2_ps  = _mm256_load_ps(r+j*16+8);
-
-      __m256 prod1_ps = _mm256_mul_ps(xx1_ps, xy1_ps);
-      __m256 prod2_ps = _mm256_mul_ps(xx2_ps, xy2_ps);
-      __m256 sqr1_ps = _mm256_mul_ps(prod1_ps, prod1_ps);
-      __m256 sqr2_ps = _mm256_mul_ps(prod2_ps, prod2_ps);
-      __m256 prdr1_ps = _mm256_mul_ps(r1_ps, prod1_ps);
-      __m256 prdr2_ps = _mm256_mul_ps(r2_ps, prod2_ps);
-
-      mean1_ps = _mm256_add_ps(mean1_ps,prod1_ps);
-      mean2_ps = _mm256_add_ps(mean2_ps,prod2_ps);
-      norm1_ps = _mm256_add_ps(norm1_ps,sqr1_ps);
-      norm2_ps = _mm256_add_ps(norm2_ps,sqr2_ps);
-      rprd1_ps = _mm256_add_ps(rprd1_ps,prdr1_ps);
-      rprd2_ps = _mm256_add_ps(rprd2_ps,prdr2_ps);
-      rsum1_ps = _mm256_add_ps(rsum1_ps,r1_ps);
-      rsum2_ps = _mm256_add_ps(rsum2_ps,r2_ps);
-    }
-
-    mean = sum_to_float(_mm256_add_ps(mean1_ps, mean2_ps));
-    norm = sum_to_float(_mm256_add_ps(norm1_ps, norm2_ps));
-    rprd = sum_to_float(_mm256_add_ps(rprd1_ps, rprd2_ps));
-    rsum = sum_to_float(_mm256_add_ps(rsum1_ps, rsum2_ps));
-
-    for (j=nRowsDiv16*16; j<n; ++j){
-      product = x[xOffset+j]*x[yOffset+j];
-      mean += product;
-      norm += product*product;
-      rprd += r[j] * product;
-      rsum += r[j];
-    }
-
-    mean /= n;
-    temp = rprd - mean * rsum;
-    result[i] += n2 
-                  * ((contNorms[xIndices[i]-1] * contNorms[xIndices[i]-1]) 
-                    + (contNorms[yIndices[i]-1] * contNorms[yIndices[i]-1])) 
-                  + (norm > 0 ? (temp * temp)/(norm-n*(mean * mean)) : 0);
-    result[i] = sqrt(result[i]/3)/n;
-  }
-
-#else
-
     double *restrict product;
 
 #pragma omp for
@@ -682,9 +607,6 @@ void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, f
       result[j] = sqrt(result[j]/3)/n;
       free(product);
     }
-
-#endif
-
   }
 
 #pragma pomp inst end(crout_compute_norms_cont_cont)
