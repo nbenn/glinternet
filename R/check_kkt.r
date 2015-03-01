@@ -11,10 +11,10 @@ check_kkt = function(X, Z, res, n, pCat, pCont, numLevels, candidates, activeSet
     if (!is.null(candidates$variables$catcat)) norms$catcat = compute_norms_cat_cat(X, res, n, numLevels, candidates$variables$catcat, cpuInfo$num_used_cpus)
   }
   if (pCont > 0){
-    norms$cont = compute_norms_cont(Z[[mynode*2+2]], res, n)
+    norms$cont = compute_norms_cont(Z[[mynode+1]], res, n)
     if (!is.null(candidates$variables$contcont)) norms$contcont = compute_norms_cont_cont(Z, norms$cont, res, n, candidates$variables$contcont, cpuInfo, verbose)
   }
-  if (!is.null(candidates$variables$catcont)) norms$catcont = compute_norms_cat_cont(X, Z[[mynode*2+2]], norms$cat, res, n, numLevels, candidates$variables$catcont, cpuInfo$num_used_cpus)
+  if (!is.null(candidates$variables$catcont)) norms$catcont = compute_norms_cat_cont(X, Z[[mynode+1]], norms$cat, res, n, numLevels, candidates$variables$catcont, cpuInfo$num_used_cpus)
 
   #check for nonzero variables
   violators = lapply(1:5, function(x){

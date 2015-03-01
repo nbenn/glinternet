@@ -561,7 +561,7 @@ SEXP R_compute_norms_cat_cont(SEXP R_x, SEXP R_z, SEXP R_catNorms, SEXP R_r, SEX
   return R_result;
 }
 
-void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, float *restrict r, int *restrict nRows, int *restrict nVars, int *restrict xIndices, int *restrict yIndices, int *restrict node_used, int *restrict numCores, double *restrict result){
+void compute_norms_cont_cont(double *restrict xx[], double *restrict contNorms, double *restrict r, int *restrict nRows, int *restrict nVars, int *restrict xIndices, int *restrict yIndices, int *restrict node_used, int *restrict numCores, double *restrict result){
   
   int n = *nRows;
   int p = *nVars;
@@ -578,12 +578,11 @@ void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, f
       Rf_error("no memory allocated on node %d; in compute_norms_cont_cont", node);
     }
 
-    float *restrict x = xx[node];
+    double *restrict x = xx[node];
 
     int i, j;
     size_t xOffset, yOffset;
-    float mean, norm, temp, rprd, rsum;
-    float product;
+    double mean, norm, temp, rprd, rsum;
 
     double *restrict product;
 
@@ -643,23 +642,23 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   int *restrict num_used_cpus = INTEGER(R_num_used_cpus);
 
   SEXP R_xx[max_num_nodes[0]];
-  float *restrict xx[max_num_nodes[0]];
+  double *restrict xx[max_num_nodes[0]];
   for(int i=0; i<max_num_nodes[0]; ++i) {
-    PROTECT(R_xx[i] = VECTOR_ELT(R_x, i*2));
+    PROTECT(R_xx[i] = VECTOR_ELT(R_x, i*2+1));
     if (node_used[i] > 0) {
-      xx[i] = R_ExternalPtrAddr(R_xx[i]);
+      xx[i] = REAL(R_xx[i]);
     }
     else {
-      xx[i] = (float*)R_ExternalPtrAddr(R_xx[i]);
+      xx[i] = (double*)INTEGER(R_xx[i]);
     }
     UNPROTECT(1);
   }
 
   R_xlen_t n = xlength(R_r);
-  float *restrict r = (float*)_mm_malloc(n*sizeof(float), 64);
+  double *restrict r = (double*)_mm_malloc(n*sizeof(double), 64);
   double *restrict R_r_ptr = REAL(R_r);
   for (size_t i = 0; i < n; ++i) {
-    r[i] = (float)R_r_ptr[i];
+    r[i] = R_r_ptr[i];
   }
 
   Rboolean verbose = FALSE;
