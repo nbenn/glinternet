@@ -1229,7 +1229,7 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   SEXP R_zz[max_num_nodes[0]];
   double *restrict zz[max_num_nodes[0]];
   for(int i=0; i<max_num_nodes[0]; ++i) {
-    PROTECT(R_zz[i] = VECTOR_ELT(R_z, i*2+1));
+    PROTECT(R_zz[i] = VECTOR_ELT(R_z, i));
     if (node_used[i] > 0) {
       zz[i] = REAL(R_zz[i]);
     }

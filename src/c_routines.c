@@ -644,7 +644,7 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   SEXP R_xx[max_num_nodes[0]];
   double *restrict xx[max_num_nodes[0]];
   for(int i=0; i<max_num_nodes[0]; ++i) {
-    PROTECT(R_xx[i] = VECTOR_ELT(R_x, i*2+1));
+    PROTECT(R_xx[i] = VECTOR_ELT(R_x, i));
     if (node_used[i] > 0) {
       xx[i] = REAL(R_xx[i]);
     }
