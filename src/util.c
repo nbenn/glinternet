@@ -369,7 +369,7 @@ SEXP retry_alloc_z(SEXP z, SEXP info) {
   PROTECT(tmpd = alloc(alignment, n, affected_node));
 
   float *flt_ptr = R_ExternalPtrAddr(tmpf);
-  for (size_t i = 0; i < n; ++i) {
+  for (R_xlen_t i = 0; i < n; ++i) {
     flt_ptr[i]    = (float)REAL(original)[i];
     REAL(tmpd)[i] = REAL(original)[i];
   }
@@ -394,7 +394,7 @@ SEXP extract_col(SEXP src, SEXP i) {
   R_xlen_t ncols = (R_xlen_t)INTEGER(dims2)[1];
 
   PROTECT(i = coerceVector(i, INTSXP));
-  int col_idx = *INTEGER(i);
+  R_xlen_t col_idx = (R_xlen_t)INTEGER(i)[0];
 
   if(col_idx < 1 || col_idx > ncols) {
     Rf_error("in extract_col: 1 <= %d <= %d needed", 
@@ -420,7 +420,7 @@ SEXP import_col(SEXP col, SEXP dest, SEXP i, SEXP info) {
   R_xlen_t nelem = xlength(col);
 
   PROTECT(i = coerceVector(i, INTSXP));
-  int col_idx = *INTEGER(i);
+  R_xlen_t col_idx = (R_xlen_t)INTEGER(i)[0];
   col_idx -= 1;
 
   SEXP node_used, max_num_nodes;

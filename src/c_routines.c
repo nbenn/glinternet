@@ -193,7 +193,7 @@ void rescale_beta(int *restrict x, double *restrict z, const int *restrict nRows
   }
   if (pCont > 0){
     for (p=0; p<pCont; p++){
-      zOffsetPtr = z + (contIndices[p]-1)*n;
+      zOffsetPtr = z + ((size_t)contIndices[p]-1)*n;
       mean = 0.0;
       norm = 0.0;
       for (i=0; i<n; i++){
@@ -208,6 +208,7 @@ void rescale_beta(int *restrict x, double *restrict z, const int *restrict nRows
     }
   }
   if (pCatCat > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(n);
     for (p=0; p<pCatCat; p+=2){
       size = numLevels[catcatIndices[p]-1] * numLevels[catcatIndices[p+1]-1];
@@ -223,8 +224,8 @@ void rescale_beta(int *restrict x, double *restrict z, const int *restrict nRows
     double *restrict wOffsetPtr;
     double *restrict product = malloc(n * sizeof *product);
     for (p=0; p<pContCont; p+=2){
-      wOffsetPtr = z + (contcontIndices[p]-1)*n;
-      zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+      wOffsetPtr = z + ((size_t)contcontIndices[p]-1)*n;
+      zOffsetPtr = z + ((size_t)contcontIndices[p+1]-1)*n;
       mean = norm = meanZ = normZ = 0.0;
       for (i=0; i<n; i++){
 	mean += wOffsetPtr[i];
@@ -258,6 +259,7 @@ void rescale_beta(int *restrict x, double *restrict z, const int *restrict nRows
     free(product);
   }
   if (pCatCont > 0){
+    Rf_error("categorical variables currently not supported. (can be restored!)");
     factor = sqrt(2);
     double factor1 = sqrt(2*n);
     for (p=0; p<pCatCont; p+=2){
@@ -505,6 +507,7 @@ SEXP R_compute_norms_cat_cat(SEXP R_x, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEX
 }
 
 void compute_norms_cat_cont(int *restrict x, double *restrict z, double *restrict catNorms, double *restrict r, int *restrict nRows, int *restrict nVars, int *restrict numLevels, int *restrict xIndices, int *restrict zIndices, int *restrict numCores, double *restrict result){
+  Rf_error("categorical variables currently not supported. (can be restored!)");
   int n = *nRows;
   int p = *nVars;
   int i, j, xOffset, zOffset, levels;
@@ -664,8 +667,8 @@ void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, f
 
 #pragma omp for
     for (j=0; j<p; j++){
-      xOffset = (xIndices[j] - 1)*n;
-      yOffset = (yIndices[j] - 1)*n;
+      xOffset = ((size_t)xIndices[j] - 1)*n;
+      yOffset = ((size_t)yIndices[j] - 1)*n;
       product = malloc(n * sizeof *product);
       mean = norm = 0.0;
       for (i=0; i<n; i++){

@@ -15,6 +15,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   cat("n.cores: ", cpuNodeInfo$num_used_cpus, "\n")
   if(numCores != cpuNodeInfo$num_used_cpus) 
     stop("Error: numCores != cpuNodeInfo$num_used_cpus")
+  if (verbose) cat("size of X: ", format(object.size(X), units="MB"), "\n")
   if (verbose) print(cpuNodeInfo)
 
                                         #separate into categorical and continuous parts
@@ -40,6 +41,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     }
   }
   else Z = NULL
+
+  if (verbose) cat("size of Z: ", format(object.size(Z), units="MB"), "\n")
 
   if(!all(cpuNodeInfo$node_used >= 0)) {
     tempdir <- Sys.getenv("TMPDIR")

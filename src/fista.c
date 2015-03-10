@@ -100,7 +100,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
         int localOffset = offset + p;
         /* check if beta is zero */
         if (fabs(beta[localOffset]) >= eps) {
-          zOffsetPtr = z + (contIndices[p]-1)*n;
+          zOffsetPtr = z + ((size_t)contIndices[p]-1)*n;
           
           __m256d beta0 = _mm256_broadcast_sd(beta+localOffset);
           for (i=0; i<nDiv8; ++i){
@@ -137,7 +137,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
       int localOffset = offset + p;
       /* check if beta is zero */
       if (fabs(beta[localOffset]) >= eps) {
-        zOffsetPtr = z + (contIndices[p]-1)*n;
+        zOffsetPtr = z + ((size_t)contIndices[p]-1)*n;
         for (i=0; i<n; i++) {
           localResMnt[i] += zOffsetPtr[i] * beta[localOffset];
         }
@@ -225,8 +225,8 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
           }
         }
         if (!allzero){
-          wOffsetPtr = z + (contcontIndices[p]-1)*n;
-          zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+          wOffsetPtr = z + ((size_t)contcontIndices[p]-1)*n;
+          zOffsetPtr = z + ((size_t)contcontIndices[p+1]-1)*n;
           __m256d mean1 = _mm256_setzero_pd();
           __m256d norm1 = _mm256_setzero_pd();
           __m256d mean2 = _mm256_setzero_pd();
@@ -342,8 +342,8 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
         }
       }
       if (!allzero){
-        wOffsetPtr = z + (contcontIndices[p]-1)*n;
-        zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+        wOffsetPtr = z + ((size_t)contcontIndices[p]-1)*n;
+        zOffsetPtr = z + ((size_t)contcontIndices[p+1]-1)*n;
         mean = norm = 0.0;
         for (i=0; i<n; i++){
           localResMnt[i] += (wOffsetPtr[i]*beta[localOffset] + zOffsetPtr[i]*beta[localOffset+1]) / factor;
@@ -560,7 +560,7 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
       for (p=0; p<pCont; p++){
 
         int localOffset = offset + p;
-        zOffsetPtr = z + (contIndices[p]-1)*n;
+        zOffsetPtr = z + ((size_t)contIndices[p]-1)*n;
         __m256d grd0 = _mm256_set_pd(gradient[localOffset], 0, 0, 0);
 
         for (i=0; i<nDiv16; ++i){
@@ -609,7 +609,7 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
 
     for (p=0; p<pCont; p++){
       int localOffset = offset + p;
-      zOffsetPtr = z + (contIndices[p]-1)*n;
+      zOffsetPtr = z + ((size_t)contIndices[p]-1)*n;
       double gradient0 = gradient[localOffset];
       for (i=0; i<n; i++){
         gradient0 += zOffsetPtr[i] * r[i];
@@ -675,8 +675,8 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
 #pragma omp for
       for (p=0; p<pContCont; p+=2){
         int localOffset = offset + 3 * (p / 2);
-        wOffsetPtr = z + (contcontIndices[p]-1)*n;
-        zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+        wOffsetPtr = z + ((size_t)contcontIndices[p]-1)*n;
+        zOffsetPtr = z + ((size_t)contcontIndices[p+1]-1)*n;
 
         __m256d mean1 = _mm256_setzero_pd();
         __m256d mean2 = _mm256_setzero_pd();
@@ -767,8 +767,8 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
 
     for (p=0; p<pContCont; p+=2){
       int localOffset = offset + 3 * (p / 2);
-      wOffsetPtr = z + (contcontIndices[p]-1)*n;
-      zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
+      wOffsetPtr = z + ((size_t)contcontIndices[p]-1)*n;
+      zOffsetPtr = z + ((size_t)contcontIndices[p+1]-1)*n;
       mean = 0.0;
       norm = 0.0;
       gradient0 = gradient[localOffset];
