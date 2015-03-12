@@ -748,7 +748,7 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
         if (norm > 0){
           mean = mean / n;
           norm = sqrt(3 * (norm-n*mean*mean));
-          gradOpt[localOffset+2] = gradient[localOffset+2] + (rprd - mean * rsum) / norm;
+          gradOpt[localOffset+2] = (gradient[localOffset+2] + (rprd - mean * rsum)) / norm;
         }
       }
     }
