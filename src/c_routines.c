@@ -613,8 +613,6 @@ void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, f
     __m256 rsum2_ps = _mm256_setzero_ps();
 
     for (j=0; j<nRowsDiv16; ++j) {
-      /* fma instructions could be used if avx2 were supported;
-         not the case on euler :( */
       __m256 xx1_ps = _mm256_load_ps(x+xOffset+j*16);
       __m256 xx2_ps = _mm256_load_ps(x+xOffset+j*16+8);
       __m256 xy1_ps = _mm256_load_ps(x+yOffset+j*16);
@@ -624,17 +622,13 @@ void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, f
 
       __m256 prod1_ps = _mm256_mul_ps(xx1_ps, xy1_ps);
       __m256 prod2_ps = _mm256_mul_ps(xx2_ps, xy2_ps);
-      __m256 sqr1_ps = _mm256_mul_ps(prod1_ps, prod1_ps);
-      __m256 sqr2_ps = _mm256_mul_ps(prod2_ps, prod2_ps);
-      __m256 prdr1_ps = _mm256_mul_ps(r1_ps, prod1_ps);
-      __m256 prdr2_ps = _mm256_mul_ps(r2_ps, prod2_ps);
 
       mean1_ps = _mm256_add_ps(mean1_ps,prod1_ps);
       mean2_ps = _mm256_add_ps(mean2_ps,prod2_ps);
-      norm1_ps = _mm256_add_ps(norm1_ps,sqr1_ps);
-      norm2_ps = _mm256_add_ps(norm2_ps,sqr2_ps);
-      rprd1_ps = _mm256_add_ps(rprd1_ps,prdr1_ps);
-      rprd2_ps = _mm256_add_ps(rprd2_ps,prdr2_ps);
+      norm1_ps = _mm256_fmadd_ps(prod1_ps, prod1_ps, norm1_ps);
+      norm2_ps = _mm256_fmadd_ps(prod2_ps, prod2_ps, norm2_ps);
+      rprd1_ps = _mm256_fmadd_ps(r1_ps, prod1_ps, rprd1_ps);
+      rprd2_ps = _mm256_fmadd_ps(r2_ps, prod2_ps, rprd2_ps);
       rsum1_ps = _mm256_add_ps(rsum1_ps,r1_ps);
       rsum2_ps = _mm256_add_ps(rsum2_ps,r2_ps);
     }
