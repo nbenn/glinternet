@@ -20,7 +20,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
   double factor;
 
   // Setting up the localResults arrays
-//#ifdef __AVX__
+#ifdef __AVX__
 
   double *restrict*restrict localResOpt;
 #pragma omp parallel
@@ -34,12 +34,12 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
     memset(localResOpt[threadId], 0, n * sizeof(double));
   }
 
-//#else
+#else
 
   double *restrict localResMnt = malloc(n * sizeof(double));
   memset(localResMnt, 0, n * sizeof(double));
 
-//#endif
+#endif
 
 #pragma pomp inst begin(fista_x_times_beta)
   
@@ -72,7 +72,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
   /* continuous */
   if (pCont > 0){
 
-//#ifdef __AVX__
+#ifdef __AVX__
 
     int nDiv8 = n/8;
 
@@ -123,7 +123,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
       }
     }
 
-//#else
+#else
 
     int cpu = sched_getcpu();
     int node = numa_node_of_cpu(cpu);
@@ -140,7 +140,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
       }
     }
 
-//#endif
+#endif
 
     offset += pCont;
   }
@@ -180,7 +180,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
 
     factor = sqrt(3);
 
-//#ifdef __AVX__
+#ifdef __AVX__
 
     int nDiv8 = n/8;
 
@@ -305,7 +305,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
       _mm_free(prdOpt);
     }
 
-//#else
+#else
 
     int cpu = sched_getcpu();
     int node = numa_node_of_cpu(cpu);
@@ -347,7 +347,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
 
     free(prdMnt);
 
-//#endif
+#endif
 
     offset += 3 * (pContCont / 2);
   }
@@ -386,7 +386,7 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
     }
   }
 
-  double *restrict sum = malloc(n * sizeof *sum);
+  /*double *restrict sum = malloc(n * sizeof *sum);
   memset(sum, 0, n * sizeof(double));
 #pragma omp parallel private(i) 
   {
@@ -399,20 +399,20 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
 #pragma omp barrier
 #pragma omp single
     for (i=0; i<n; ++i) {
-      if (fabs(localResMnt[i]-sum[i]) > 1.0e-15) {
+      if (fabs(localResMnt[i]-sum[i]) > 1.0e-12) {
         Rprintf("%.20f\n%.20f\n%.20f\n%.20f\n\n", 
           localResMnt[i], sum[i],
-          localResMnt[i]-sum[i], 1.0e-15);
+          localResMnt[i]-sum[i], 1.0e-12);
         Rf_error("i've seen enough from x_times_beta");
       }
     }
   }
-  free(sum);
+  free(sum);*/
   
   /* aggregate local results */
-//#ifdef __AVX__
+#ifdef __AVX__
 
-/*#pragma omp parallel private(i) 
+#pragma omp parallel private(i) 
   {
     const int threadCount = omp_get_num_threads();
     const int threadId = omp_get_thread_num();
@@ -425,16 +425,16 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
 #pragma omp barrier
 #pragma omp single 
       free((void*) localResOpt);
-  }*/
+  }
 
-//#else
+#else
 
   for (i=0; i<n; i++) {
     result[i] += localResMnt[i];
   }
   free(localResMnt);
 
-//#endif
+#endif
   
 #pragma pomp inst end(fista_x_times_beta)
 
@@ -494,11 +494,11 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
   double factor;
 
   size_t gradLength = pCont + 3 * pContCont/2;
-//#ifdef __AVX__
+#ifdef __AVX__
   double *restrict gradOpt = malloc(gradLength * sizeof *gradOpt);
-//#else
+#else
   double *restrict gradMnt = malloc(gradLength * sizeof *gradMnt);
-//#endif
+#endif
 
 #pragma pomp inst begin(fista_compute_gradient)
   /* categorical */
@@ -520,7 +520,7 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
   /* continuous */
   if (pCont > 0){
 
-//#ifdef __AVX__
+#ifdef __AVX__
 
 #pragma omp parallel private(p, i, zOffsetPtr)
     {
@@ -564,11 +564,11 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
           gradient0 += zOffsetPtr[i] * r[i];
         }
 
-        gradOpt[localOffset] += gradient0;
+        gradOpt[localOffset] = gradient[localOffset] + gradient0;
       }
     }
 
-//#else
+#else
 
     int cpu = sched_getcpu();
     int node = numa_node_of_cpu(cpu);
@@ -584,7 +584,7 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
       gradMnt[localOffset] = gradient0;
     }
 
-//#endif
+#endif
 
     offset += pCont;
   }
@@ -613,7 +613,7 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
   if (pContCont > 0){
     factor = sqrt(3);
 
-//#ifdef __AVX__
+#ifdef __AVX__
 
     int nDiv8 = n/8;
 
@@ -702,8 +702,8 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
           rsum += r[i];
         }
 
-        gradOpt[localOffset]   = (grad20+gradOpt[localOffset])   / factor;
-        gradOpt[localOffset+1] = (grad21+gradOpt[localOffset+1]) / factor;
+        gradOpt[localOffset]   = (grad20+gradient[localOffset])   / factor;
+        gradOpt[localOffset+1] = (grad21+gradient[localOffset+1]) / factor;
 
         if (norm > 0){
           mean = mean / n;
@@ -713,7 +713,7 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
       }
     }
 
-//#else
+#else
 
     int cpu = sched_getcpu();
     int node = numa_node_of_cpu(cpu);
@@ -759,7 +759,7 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
 
     free(product);
 
-//#endif
+#endif
 
     offset += 3 * (pContCont / 2);
 
@@ -793,32 +793,32 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
     }
   }
 
-  for (i=0; i<offset; ++i) {
+  /*for (i=0; i<offset; ++i) {
     if (fabs(gradMnt[i]-gradOpt[i]) > 1.0e-12) {
       Rprintf("%.20f\n%.20f\n%.20f\n%.20f\n\n", 
         gradMnt[i], gradOpt[i],
         gradMnt[i]-gradOpt[i], 1.0e-12);
       Rf_error("i've seen enough from compute_gradient");
     }
-  }
+  }*/
 
   /* normalize by n */
   for (i=0; i<offset; i++){
-//#ifdef __AVX__
-    //gradient[i] = gradOpt[i];
-//#else
+#ifdef __AVX__
+    gradient[i] = gradOpt[i];
+#else
     gradient[i] = gradMnt[i];
-//#endif
+#endif
     gradient[i] /= -n;
   }
 
 #pragma pomp inst end(fista_compute_gradient)
 
-//#ifdef __AVX__
+#ifdef __AVX__
   free(gradOpt);
-//#else
+#else
   free(gradMnt);
-//#endif
+#endif
 
 }
 
