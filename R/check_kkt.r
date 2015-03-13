@@ -32,6 +32,9 @@ check_kkt = function(X, Z, res, n, pCat, pCont, numLevels, candidates, activeSet
     }
     else extras = 1:nrow(violators[[i]])
     if (length(extras) > 0){
+      cat("length(extras) = ", length(extras), "\n")
+      if (length(extras) < 100) print(extras)
+      else print(extras[1:100])
       activeSet[[i]] = rbind(activeSet[[i]], violators[[i]][extras, ])
       flag = 0
     }

@@ -206,7 +206,8 @@ static void finalize_singles_array_pointer(SEXP ext) {
     return;
   //Rprintf("finalizing singles array\n");
   float *ptr = (float *) R_ExternalPtrAddr(ext);
-  _mm_free(ptr);
+  double size = REAL(R_ExternalPtrTag(ext))[0];
+  numa_free(ptr, (size_t)size);
   R_ClearExternalPtr(ext);
 }
 
@@ -281,25 +282,33 @@ SEXP alloc_z(SEXP a, SEXP b, SEXP x, SEXP info) {
 
   /* allocate space for x matrix on each numa node which is used;
      allocate a dummy int vector of length 1 on unused nodes */
-  for (i=0; i<INTEGER(max_num_nodes)[0]; ++i) {
-    SEXP tmpd, tmpf;
+  for (int i=0; i<INTEGER(max_num_nodes)[0]; ++i) {
+    SEXP tmp_ptr, tmp_tag, tmp_double;
     if (INTEGER(node_used)[i] > 0) {
-      //Rprintf("allocating matrix on node %d.\n", i);
-      float* array = (float*)_mm_malloc(n*sizeof(float), alignment);
-      PROTECT(tmpf = R_MakeExternalPtr(array, R_NilValue, R_NilValue));
-      R_RegisterCFinalizerEx(tmpf, finalize_singles_array_pointer, TRUE);
-      PROTECT(tmpd = alloc(alignment, n, i));
+      /* the size of the allocated memory is needed in numa_free
+         -> use the ExternalPtrTag to store this info; could be larger
+         than MAXINT therefore store as double */
+      tmp_tag = PROTECT(allocVector(REALSXP, 1));
+      REAL(tmp_tag)[0] = n*sizeof(float);
+      Rprintf("allocating matrix (size %d) on node %d.\n",
+        (size_t)REAL(tmp_tag)[0], i);
+      float* array = (float*)numa_alloc_onnode(n*sizeof(float), (size_t)i);
+      PROTECT(tmp_ptr = R_MakeExternalPtr(array, tmp_tag, R_NilValue));
+      R_RegisterCFinalizerEx(tmp_ptr, finalize_singles_array_pointer, TRUE);
+      PROTECT(tmp_double = alloc(alignment, n, i));
     }
     else {
-      int* array = (int*)_mm_malloc(sizeof(int), alignment);
-      PROTECT(tmpf = R_MakeExternalPtr(array, R_NilValue, R_NilValue));
-      R_RegisterCFinalizerEx(tmpf, finalize_singles_array_pointer, TRUE);
-      PROTECT(tmpd  = allocVector(INTSXP, 1));
+      tmp_tag = PROTECT(allocVector(REALSXP, 1));
+      REAL(tmp_tag)[0] = 1*sizeof(int);
+      int* array = (int*)numa_alloc_onnode(sizeof(int), (size_t)i);
+      PROTECT(tmp_ptr = R_MakeExternalPtr(array, tmp_tag, R_NilValue));
+      R_RegisterCFinalizerEx(tmp_ptr, finalize_singles_array_pointer, TRUE);
+      PROTECT(tmp_double  = allocVector(INTSXP, 1));
     }
-    if (tmpf == NULL) Rf_error("could not allocate float array.");
-    SET_VECTOR_ELT(result, i*2,   tmpf);
-    SET_VECTOR_ELT(result, i*2+1, tmpd);
-    UNPROTECT(2);
+    if (tmp_ptr == NULL) Rf_error("could not allocate float array.");
+    SET_VECTOR_ELT(result, i*2,   tmp_ptr);
+    SET_VECTOR_ELT(result, i*2+1, tmp_double);
+    UNPROTECT(3);
   }
 
   /* pupulate dummy vectors with -1 */
