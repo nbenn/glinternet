@@ -45,7 +45,7 @@ SEXP get_cpu_node_usage();
 
 void* custom_alloc(R_allocator_t *allocator, size_t size);
 void custom_free(R_allocator_t *allocator, void * addr);
-SEXP alloc(int alignment, R_xlen_t length, size_t node);
+SEXP alloc(int alignment, R_xlen_t length, int node);
 
 static void finalize_singles_array_pointer(SEXP ext);
 

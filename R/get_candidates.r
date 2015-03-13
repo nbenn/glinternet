@@ -9,8 +9,6 @@ get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, cpuInfo, screenL
   length(candidates$norms) = 5
   names(candidates$norms) = labels
 
-  mynode = .Call("get_my_numa_node")
-  
   #get main effect norms
   if (pCat > 0){
     candidates$variables$cat = matrix(1:pCat, ncol=1)
@@ -19,7 +17,7 @@ get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, cpuInfo, screenL
   }
   if (pCont > 0){
     candidates$variables$cont = matrix(1:pCont, ncol=1)
-    if (is.null(norms$cont)) candidates$norms$cont = compute_norms_cont(Z[[mynode*2+2]], res, n)
+    if (is.null(norms$cont)) candidates$norms$cont = compute_norms_cont(Z[[cpuInfo$max_num_nodes+1]], res, n)
     else candidates$norms$cont = norms$cont
   }
   
@@ -46,7 +44,7 @@ get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, cpuInfo, screenL
   #get interaction norms
   if (!is.null(candidates$variables$catcat)) candidates$norms$catcat = compute_norms_cat_cat(X, res, n, numLevels, candidates$variables$catcat, cpuInfo$num_used_cpus)
   if (!is.null(candidates$variables$contcont)) candidates$norms$contcont = compute_norms_cont_cont(Z, candidates$norms$cont, res, n, candidates$variables$contcont, cpuInfo, verbose)
-  if (!is.null(candidates$variables$catcont)) candidates$norms$catcont = compute_norms_cat_cont(X, Z[[mynode*2+2]], candidates$norms$cat, res, n, numLevels, candidates$variables$catcont, cpuInfo$num_used_cpus)
+  if (!is.null(candidates$variables$catcont)) candidates$norms$catcont = compute_norms_cat_cont(X, Z, candidates$norms$cat, res, n, numLevels, candidates$variables$catcont, cpuInfo$num_used_cpus)
   
   return(candidates)
 }

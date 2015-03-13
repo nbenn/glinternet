@@ -42,9 +42,11 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
   else Z = NULL
 
-  if (verbose) cat("size of Z: ", format(object.size(Z), units="MB"), "\n")
-
-  if(!all(cpuNodeInfo$node_used >= 0)) {
+  if(all(cpuNodeInfo$node_used >= 0)) {
+    if (verbose) cat("size of Z: ", format(object.size(Z), units="MB"), "\n")
+  }
+  else {
+    gcinfo(TRUE)
     tempdir <- Sys.getenv("TMPDIR")
     cat("saving x to ", paste(tempdir, "/originalX.rds\n", sep=""))
     saveRDS(X, paste(tempdir, "/originalX.rds", sep=""), compress=FALSE)

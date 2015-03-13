@@ -22,6 +22,9 @@ compute_norms_cat_cont = function(X, Z, catNorms, res, n, numLevels, indices, nu
 
 compute_norms_cont_cont = function(Z, contNorms, res, n, indices, cpuInfo, verbose=FALSE){
   numInt = nrow(indices)
-  .Call("R_compute_norms_cont_cont", Z, contNorms, res, n, numInt, indices[, 1], indices[, 2], verbose, cpuInfo, double(numInt))
+  #cat("numInt: ", numInt, "\n")
+  #result = double(numInt)
+  #cat("size of result: ", format(object.size(result), units="MB"), "\n")
+  .Call("R_compute_norms_cont_cont", Z, contNorms, res, n, numInt, indices[, 1], indices[, 2], verbose, cpuInfo)
 }
 

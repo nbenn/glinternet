@@ -11,7 +11,7 @@
 
 static const double eps = 0.0;
 
-void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta, int *nRows, int *nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict result){
+void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, int *nRows, int *nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict result){
   int n = *nRows;
   int pCat=nVars[0], pCont=nVars[1], pCatCat=2*nVars[2], pContCont=2*nVars[3], pCatCont=2*nVars[4];
   int i, p, nLevels, allzero, offset = 0;
@@ -81,10 +81,6 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
 
       const int threadId = omp_get_thread_num();
       
-      int cpu = sched_getcpu();
-      int node = numa_node_of_cpu(cpu);
-      double *restrict z = zz[node];
-
       if(max_alignment((uintptr_t)z) < 64) {
         Rf_error("alignment of z is %d; need at least 64 byte alignment",
           max_alignment((uintptr_t)z));
@@ -124,10 +120,6 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
     }
 
 #else
-
-    int cpu = sched_getcpu();
-    int node = numa_node_of_cpu(cpu);
-    double *restrict z = zz[node];
 
     for (p=0; p<pCont; p++){
       int localOffset = offset + p;
@@ -187,10 +179,6 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
 #pragma omp parallel private(p, i, allzero, zOffsetPtr)
     {
       const int threadId = omp_get_thread_num();
-
-      int cpu = sched_getcpu();
-      int node = numa_node_of_cpu(cpu);
-      double *restrict z = zz[node];
 
       double *restrict wOffsetPtr;
       double mean, norm;
@@ -307,10 +295,6 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
 
 #else
 
-    int cpu = sched_getcpu();
-    int node = numa_node_of_cpu(cpu);
-    double *restrict z = zz[node];
-
     double mean, norm;
     double *restrict wOffsetPtr;
     double *restrict prdMnt = malloc(n * sizeof *prdMnt);
@@ -356,10 +340,6 @@ void x_times_beta(int *restrict x, double *restrict zz[], double *restrict beta,
   if (pCatCont > 0){
     Rf_error("categorical variables currently not supported. (can be restored!)");
     
-    int cpu = sched_getcpu();
-    int node = numa_node_of_cpu(cpu);
-    double *restrict z = zz[node];
-
     factor = sqrt(2*n);
     double factorZ = sqrt(2);
     for (p=0; p<pCatCont; p+=2){
@@ -485,7 +465,7 @@ void compute_objective(const double *restrict y, const double *restrict res, con
 #pragma pomp inst end(fista_compute_objective)
 }
 
-void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r, int *restrict nRows, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict gradient){
+void compute_gradient(int *restrict x, double *restrict z, double *restrict r, int *restrict nRows, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict gradient){
   int n = *nRows;
   int pCat=nVars[0], pCont=nVars[1], pCatCat=2*nVars[2], pContCont=2*nVars[3], pCatCont=2*nVars[4];
   int i, p, offset = 0;
@@ -524,10 +504,6 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
 
 #pragma omp parallel private(p, i, zOffsetPtr)
     {
-
-      int cpu = sched_getcpu();
-      int node = numa_node_of_cpu(cpu);
-      double *restrict z = zz[node];
 
       int nDiv8 = n/8;
 
@@ -569,10 +545,6 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
     }
 
 #else
-
-    int cpu = sched_getcpu();
-    int node = numa_node_of_cpu(cpu);
-    double *restrict z = zz[node];
 
     for (p=0; p<pCont; p++){
       int localOffset = offset + p;
@@ -619,10 +591,6 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
 
 #pragma omp parallel private(p, i, zOffsetPtr)
     {
-
-      int cpu = sched_getcpu();
-      int node = numa_node_of_cpu(cpu);
-      double *restrict z = zz[node];
 
       double *restrict wOffsetPtr;
       double mean, norm;
@@ -715,10 +683,6 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
 
 #else
 
-    int cpu = sched_getcpu();
-    int node = numa_node_of_cpu(cpu);
-    double *restrict z = zz[node];
-
     double *restrict wOffsetPtr;
     double mean, norm;
 
@@ -767,10 +731,6 @@ void compute_gradient(int *restrict x, double *restrict zz[], double *restrict r
   /* categorical-continuous */
   if (pCatCont > 0){
     Rf_error("categorical variables currently not supported. (can be restored!)");
-
-    int cpu = sched_getcpu();
-    int node = numa_node_of_cpu(cpu);
-    double *restrict z = zz[node];
 
     factor = sqrt(2*n);
     double factorZ = sqrt(2);
@@ -881,7 +841,7 @@ void compute_update(const double *restrict beta, double *restrict betaUpdated, c
 #pragma pomp inst end(fista_compute_update)
 }
 
-void optimize_step(int *restrict x, double *restrict zz[], const double *restrict y, const double *restrict residual, double *restrict linear, int *restrict nRows, int *restrict numGroups, int *restrict groupSizes, int *restrict gradientLength, const double *restrict intercept, double *restrict beta, double *restrict betaUpdated, const double *restrict gradient, double *restrict stepsize, const double *restrict lambda, const double *restrict alpha, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, const int *restrict family){
+void optimize_step(int *restrict x, double *restrict z, const double *restrict y, const double *restrict residual, double *restrict linear, int *restrict nRows, int *restrict numGroups, int *restrict groupSizes, int *restrict gradientLength, const double *restrict intercept, double *restrict beta, double *restrict betaUpdated, const double *restrict gradient, double *restrict stepsize, const double *restrict lambda, const double *restrict alpha, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, const int *restrict family){
   int i, n = *nRows, len = *gradientLength;
   double step = *stepsize;
   double loglik, loglikUpdated;
@@ -902,11 +862,11 @@ void optimize_step(int *restrict x, double *restrict zz[], const double *restric
     }
     memset(linear, 0, n * sizeof *linear);
     if (*family == 0){/* gaussian case */
-      x_times_beta(x, zz, delta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+      x_times_beta(x, z, delta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
       loglikUpdated = compute_loglik(residual, linear, &mu, nRows, family); /* residual already had intercept subtracted from it */
     }
     else {/* binomial case */
-      x_times_beta(x, zz, betaUpdated, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+      x_times_beta(x, z, betaUpdated, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
       loglikUpdated = compute_loglik(y, linear, intercept, nRows, family);
     }
     if (loglikUpdated <= loglik + gradientTimesDelta + deltaTimesDelta/(2*step)) break;
@@ -1025,7 +985,7 @@ double compute_stepsize(const double *restrict gradient, const double *restrict 
   return sqrt(normBeta/normGradient);
 }
 
-void gl_solver(int *restrict x, double *restrict zz[], double *restrict y, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, double *restrict objValue, double *restrict steps, int *restrict family, Rboolean verbose){
+void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, double *restrict objValue, double *restrict steps, int *restrict family, Rboolean verbose){
 #pragma pomp inst begin(fista_gl_solver)
   /* initialize required variables */
   struct timespec timer_x_times_beta,
@@ -1050,7 +1010,7 @@ void gl_solver(int *restrict x, double *restrict zz[], double *restrict y, int *
   if (verbose) {
     timer_x_times_beta = timer_start();
   }
-  x_times_beta(x, zz, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+  x_times_beta(x, z, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
   if (verbose) {
     Rprintf("---> timer (x_times_beta): %lf [s]\n", timer_end(timer_x_times_beta));
   }
@@ -1066,7 +1026,7 @@ void gl_solver(int *restrict x, double *restrict zz[], double *restrict y, int *
     if (verbose) {
       timer_compute_gradient = timer_start();
     }
-    compute_gradient(x, zz, residual, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, gradient);
+    compute_gradient(x, z, residual, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, gradient);
     if (verbose) {
       accum_timer_compute_gradient += timer_end(timer_compute_gradient);
     }
@@ -1082,7 +1042,7 @@ void gl_solver(int *restrict x, double *restrict zz[], double *restrict y, int *
     if (verbose) {
       timer_optimize_step = timer_start();
     }
-    optimize_step(x, zz, y, residual, linear, nRows, &numGroups, groupSizes, &gradientLength, intercept, beta, intermediate, gradient, &stepsize, lambda, alpha, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, family);
+    optimize_step(x, z, y, residual, linear, nRows, &numGroups, groupSizes, &gradientLength, intercept, beta, intermediate, gradient, &stepsize, lambda, alpha, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, family);
     if (verbose) {
       accum_timer_optimize_step += timer_end(timer_optimize_step);
     }
@@ -1101,7 +1061,7 @@ void gl_solver(int *restrict x, double *restrict zz[], double *restrict y, int *
     if (verbose) {
       timer_x_times_beta = timer_start();
     }
-    x_times_beta(x, zz, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+    x_times_beta(x, z, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
     if (verbose) {
       accum_timer_x_times_beta += timer_end(timer_x_times_beta);
     }
@@ -1186,32 +1146,20 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   int *restrict max_num_nodes = INTEGER(R_max_num_nodes);
   int *restrict num_used_cpus = INTEGER(R_num_used_cpus);
 
-  SEXP R_zz[max_num_nodes[0]];
-  double *restrict zz[max_num_nodes[0]];
-  for(int i=0; i<max_num_nodes[0]; ++i) {
-    PROTECT(R_zz[i] = VECTOR_ELT(R_z, i*2+1));
-    if (node_used[i] > 0) {
-      zz[i] = REAL(R_zz[i]);
-    }
-    else {
-      zz[i] = (double*)INTEGER(R_zz[i]);
-    }
-    UNPROTECT(1);
-  }
-
-  int cpu = sched_getcpu();
-  int node = numa_node_of_cpu(cpu);
+  SEXP R_zz;
+  PROTECT(R_zz = VECTOR_ELT(R_z, max_num_nodes[0]));
+  double *restrict z = REAL(R_zz);
 
   SEXP R_residual;
-  PROTECT(R_residual = alloc(64, *nRows, node));
+  PROTECT(R_residual = alloc(64, *nRows, -1));
   double *restrict residual = REAL(R_residual);
 
   Rboolean verbose = FALSE;
   if (LOGICAL(R_verbose)[0] == TRUE) verbose = TRUE;
 
-  gl_solver(x, zz, y, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family, verbose);
+  gl_solver(x, z, y, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family, verbose);
   
-  UNPROTECT(26);
+  UNPROTECT(27);
   SEXP result = PROTECT(allocVector(VECSXP, 4));
   SET_VECTOR_ELT(result, 0, R_intercept);
   SET_VECTOR_ELT(result, 1, R_beta);

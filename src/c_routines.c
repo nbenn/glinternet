@@ -688,7 +688,7 @@ void compute_norms_cont_cont(float *restrict xx[], double *restrict contNorms, f
 
 }
 
-SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, SEXP R_verbose, SEXP R_cpuInfo, SEXP R_result){
+SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, SEXP R_verbose, SEXP R_cpuInfo){
   //PROTECT(R_x = coerceVector(R_x, REALSXP));
   PROTECT(R_contNorms = coerceVector(R_contNorms, REALSXP));
   PROTECT(R_r = coerceVector(R_r, REALSXP));
@@ -697,7 +697,7 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   PROTECT(R_xIndices = coerceVector(R_xIndices, INTSXP));
   PROTECT(R_yIndices = coerceVector(R_yIndices, INTSXP));
   //PROTECT(R_numCores = coerceVector(R_numCores, INTSXP));
-  PROTECT(R_result = coerceVector(R_result, REALSXP));
+  //PROTECT(R_result = coerceVector(R_result, REALSXP));
   PROTECT(R_verbose = coerceVector(R_verbose, LGLSXP));
   //double *restrict x = REAL(R_x);
   double *restrict contNorms = REAL(R_contNorms);
@@ -707,7 +707,7 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   int *restrict xIndices = INTEGER(R_xIndices);
   int *restrict yIndices = INTEGER(R_yIndices);
   //int *restrict numCores = INTEGER(R_numCores);
-  double *restrict result = REAL(R_result);
+  //double *restrict result = REAL(R_result);
 
   SEXP R_node_used, R_max_num_nodes, R_num_used_cpus;
   PROTECT(R_node_used     = VECTOR_ELT(R_cpuInfo, 1));
@@ -720,7 +720,7 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   SEXP R_xx[max_num_nodes[0]];
   float *restrict xx[max_num_nodes[0]];
   for(int i=0; i<max_num_nodes[0]; ++i) {
-    PROTECT(R_xx[i] = VECTOR_ELT(R_x, i*2));
+    PROTECT(R_xx[i] = VECTOR_ELT(R_x, i));
     if (node_used[i] > 0) {
       xx[i] = R_ExternalPtrAddr(R_xx[i]);
     }
@@ -736,6 +736,10 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   for (size_t i = 0; i < n; ++i) {
     r[i] = (float)R_r_ptr[i];
   }
+
+  SEXP R_result;
+  PROTECT(R_result = alloc(64, *nVars, -1));
+  double *restrict result = REAL(R_result);
 
   Rboolean verbose = FALSE;
   if (LOGICAL(R_verbose)[0] == TRUE) verbose = TRUE;
