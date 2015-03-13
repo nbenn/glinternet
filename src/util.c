@@ -181,7 +181,7 @@ void* custom_alloc(R_allocator_t *allocator, size_t size) {
     Rf_error("could not allocate memory in custom_alloc");
   }
   void* shifted_addr = (void*)((uintptr_t)orig_addr + offset);
-  Rprintf("alloc on node %d: %p (%d)\n", node, orig_addr, size+offset);
+  //Rprintf("alloc on node %d: %p (%d)\n", node, orig_addr, size+offset);
   return (void*) shifted_addr;
 }
 
@@ -189,7 +189,7 @@ void custom_free(R_allocator_t *allocator, void* shifted_addr) {
   size_t size = ((allocator_data*)allocator->data)->size;
   size_t offset = ((allocator_data*)allocator->data)->offset;
   void* orig_addr = (void*)((uintptr_t)shifted_addr-offset);
-  Rprintf("freeing: %p (%d)\n", orig_addr, size+offset);
+  //Rprintf("freeing: %p (%d)\n", orig_addr, size+offset);
   numa_free(orig_addr, size+offset);
 }
 
@@ -247,7 +247,7 @@ static void finalize_singles_array_pointer(SEXP ext) {
   R_ClearExternalPtr(ext);
 }
 
-SEXP alloc_z(SEXP a, SEXP b, SEXP x, SEXP info) {
+SEXP alloc_z_interleaved (SEXP a, SEXP b, SEXP x, SEXP info) {
   R_xlen_t n = xlength(x);
   R_xlen_t nrows = (R_xlen_t)asInteger(a);
   R_xlen_t ncols = (R_xlen_t)asInteger(b);
@@ -267,38 +267,9 @@ SEXP alloc_z(SEXP a, SEXP b, SEXP x, SEXP info) {
      interleaved fashion among all nodes */
   PROTECT(result = allocVector(VECSXP, INTEGER(max_num_nodes)[0]+1));
 
-  int numa_node_x = -1;
-  double size_mb = 1024*1024;
-  get_mempolicy(&numa_node_x, NULL, 0, (void*)REAL(x), MPOL_F_NODE | MPOL_F_ADDR);
-  long free_mem = 0;
-  long size = numa_node_size(numa_node_x, &free_mem);
-
-  /* we need space for n doubles split among the used nodes (1/num_used_nodes),
-     n floats (0.5) and a bit extra (0.2) -> factor */
-  double factor = 1.0/(double)INTEGER(num_used_nodes)[0] + 0.5 + 0.2;
-  if (free_mem/size_mb < (factor*n*sizeof(double)/size_mb)) {
-    Rprintf("node %d: %f [MB] free of %f [MB]\n", numa_node_x, free_mem/size_mb, size/size_mb);
-    Rprintf("projected size of z is %f + %f [MB]\n", n*sizeof(double)/size_mb, n*sizeof(float)/size_mb);
-    Rprintf("--> the input matrix has to be stored to disc.\n");
-    if (numa_node_x >= 0 && numa_node_x <= INTEGER(max_num_nodes)[0]) {
-      INTEGER(node_used)[numa_node_x] = INTEGER(node_used)[numa_node_x]*(-1);
-    }
-    else {
-      Rf_error("impossible node specification in alloc_z");
-    }
-  }
-
-  int i, count = 0;
-  for (i = 0; i < INTEGER(max_num_nodes)[0]; ++i) {
-    if(INTEGER(node_used)[i] > 0) count++;
-  }
-  if(count == 0) {
-    Rf_error("only node %d can be used, which does not have enough memory!\n", numa_node_x);
-  }
-
-  /* set up names for individual matrices: node_numNode */
+  /* set up names for individual matrices: "node_numNode" and "interl" */
   char names[INTEGER(max_num_nodes)[0]+1][10];
-  for (i = 0; i < INTEGER(max_num_nodes)[0]; ++i) {
+  for (int i = 0; i < INTEGER(max_num_nodes)[0]; ++i) {
     int index_size = snprintf(NULL, 0, "%d", i) + 1;
     char index[index_size];
     char name[] = "node_";
@@ -315,50 +286,15 @@ SEXP alloc_z(SEXP a, SEXP b, SEXP x, SEXP info) {
   strncpy(names[INTEGER(max_num_nodes)[0]], name, name_size);
 
   PROTECT(result_names = allocVector(STRSXP, INTEGER(max_num_nodes)[0]+1));
-  for (i = 0; i < INTEGER(max_num_nodes)[0]+1; ++i) {
+  for (int i = 0; i < INTEGER(max_num_nodes)[0]+1; ++i) {
     SET_STRING_ELT(result_names, i, mkChar(names[i])); 
   }
   setAttrib(result, R_NamesSymbol, result_names);
-
-  /* allocate space for x matrix on each numa node which is used;
-     allocate a dummy int vector of length 1 on unused nodes */
-  for (i=0; i<INTEGER(max_num_nodes)[0]; ++i) {
-    SEXP tmp_ptr, tmp_tag;
-    if (INTEGER(node_used)[i] > 0) {
-      /* the size of the allocated memory is needed in numa_free
-         -> use the ExternalPtrTag to store this info; could be larger
-         than MAXINT therefore store as double */
-      tmp_tag = PROTECT(allocVector(REALSXP, 1));
-      REAL(tmp_tag)[0] = n*sizeof(float);
-      Rprintf("allocating matrix on node %d of size %d = %f = %d.\n",
-        i, n*sizeof(float), REAL(tmp_tag)[0], (size_t)REAL(tmp_tag)[0]);
-      float* array = (float*)numa_alloc_onnode(n*sizeof(float), (size_t)i);
-      PROTECT(tmp_ptr = R_MakeExternalPtr(array, tmp_tag, R_NilValue));
-      R_RegisterCFinalizerEx(tmp_ptr, finalize_singles_array_pointer, TRUE);
-    }
-    else {
-      tmp_tag = PROTECT(allocVector(REALSXP, 1));
-      REAL(tmp_tag)[0] = 1*sizeof(int);
-      int* array = (int*)numa_alloc_onnode(sizeof(int), (size_t)i);
-      PROTECT(tmp_ptr = R_MakeExternalPtr(array, tmp_tag, R_NilValue));
-      R_RegisterCFinalizerEx(tmp_ptr, finalize_singles_array_pointer, TRUE);
-    }
-    if (tmp_ptr == NULL) Rf_error("could not allocate float array.");
-    SET_VECTOR_ELT(result, i, tmp_ptr);
-    UNPROTECT(2);
-  }
 
   SEXP interl_array;
   PROTECT(interl_array = alloc(alignment, n, -1));
   SET_VECTOR_ELT(result, INTEGER(max_num_nodes)[0], interl_array);
   UNPROTECT(1);
-
-  /* pupulate dummy vectors with -1 */
-  for (i=0; i<INTEGER(max_num_nodes)[0]; ++i) {
-    if (INTEGER(node_used)[i] <= 0) {
-      *(int*)R_ExternalPtrAddr(VECTOR_ELT(result, i)) = -1;
-    }
-  }
 
   /* make 2d array out of used matrices */
   SEXP dims2;
@@ -371,56 +307,60 @@ SEXP alloc_z(SEXP a, SEXP b, SEXP x, SEXP info) {
   return result;
 }
 
-SEXP retry_alloc_z(SEXP z, SEXP info) {
+SEXP alloc_z_float (SEXP z, SEXP info) {
+  
   SEXP node_used, max_num_nodes;
   PROTECT(node_used      = VECTOR_ELT(info, 1));
   PROTECT(max_num_nodes  = VECTOR_ELT(info, 3));
-  int affected_node = -1;
-
-  for (int i=0; i<INTEGER(max_num_nodes)[0]; ++i) {
-    if (INTEGER(node_used)[i] < 0) {
-      affected_node = i;
-      break;
-    }
-  }
-
-  if (affected_node == -1) {
-    Rf_error("node to be allocated (%d) doesn't exist\n", affected_node);
-  }
-
-  long free_mem = 0;
-  long size = numa_node_size(affected_node, &free_mem);
-  double size_mb = 1024*1024;
 
   SEXP original;
   PROTECT(original = VECTOR_ELT(z, INTEGER(max_num_nodes)[0]));
-  
   R_xlen_t n = xlength(original);
-  int alignment = 64;
 
-  Rprintf("node %d: %f [MB] free of %f [MB]\n", affected_node, free_mem/size_mb, size/size_mb);
-  Rprintf("projected size of z is %f [MB]\n", n*sizeof(float)/size_mb);
-  Rprintf("allocating matrices of size %d on node %d.\n", n, affected_node);
-
-  SEXP tmp_ptr, tmp_tag;
-  tmp_tag = PROTECT(allocVector(REALSXP, 1));
-  REAL(tmp_tag)[0] = n*sizeof(float);
-  Rprintf("allocating matrix on node %d of size %d = %f = %d.\n",
-    affected_node, n*sizeof(float), REAL(tmp_tag)[0], (size_t)REAL(tmp_tag)[0]);
-  float* array = (float*)numa_alloc_onnode(n*sizeof(float), (size_t)affected_node);
-  PROTECT(tmp_ptr = R_MakeExternalPtr(array, tmp_tag, R_NilValue));
-  R_RegisterCFinalizerEx(tmp_ptr, finalize_singles_array_pointer, TRUE);
-
-  float *flt_ptr = R_ExternalPtrAddr(tmp_ptr);
-  for (R_xlen_t i = 0; i < n; ++i) {
-    flt_ptr[i]    = (float)REAL(original)[i];
+  /* allocate space for x matrix on each numa node which is used;
+     allocate a dummy int vector of length 1 on unused nodes */
+  for (int i=0; i<INTEGER(max_num_nodes)[0]; ++i) {
+    SEXP tmp_ptr, tmp_tag;
+    if (INTEGER(node_used)[i] > 0) {
+      /* the size of the allocated memory is needed in numa_free
+         -> use the ExternalPtrTag to store this info; could be larger
+         than MAXINT therefore store as double */
+      tmp_tag = PROTECT(allocVector(REALSXP, 1));
+      REAL(tmp_tag)[0] = n*sizeof(float);
+      Rprintf("allocating matrix (size %d) on node %d.\n",
+        (size_t)REAL(tmp_tag)[0], i);
+      float* array = (float*)numa_alloc_onnode(n*sizeof(float), (size_t)i);
+      PROTECT(tmp_ptr = R_MakeExternalPtr(array, tmp_tag, R_NilValue));
+      R_RegisterCFinalizerEx(tmp_ptr, finalize_singles_array_pointer, TRUE);
+    }
+    else {
+      tmp_tag = PROTECT(allocVector(REALSXP, 1));
+      REAL(tmp_tag)[0] = 1*sizeof(int);
+      int* array = (int*)numa_alloc_onnode(sizeof(int), (size_t)i);
+      PROTECT(tmp_ptr = R_MakeExternalPtr(array, tmp_tag, R_NilValue));
+      R_RegisterCFinalizerEx(tmp_ptr, finalize_singles_array_pointer, TRUE);
+    }
+    if (tmp_ptr == NULL) Rf_error("could not allocate float array.");
+    SET_VECTOR_ELT(z, i, tmp_ptr);
+    UNPROTECT(2);
   }
 
-  SET_VECTOR_ELT(z, affected_node, tmp_ptr);
+  /* pupulate dummy vectors with -1, populate others with data from 
+     interleaved double array */
+  for (int i=0; i<INTEGER(max_num_nodes)[0]; ++i) {
+    if (INTEGER(node_used)[i] <= 0) {
+      *(int*)R_ExternalPtrAddr(VECTOR_ELT(z, i)) = -1;
+    }
+    else if (INTEGER(node_used)[i] > 0) {
+      float *flt_ptr = R_ExternalPtrAddr(VECTOR_ELT(z, i));
+      for (R_xlen_t j = 0; j < n; ++j) {
+        flt_ptr[j]    = (float)REAL(original)[j];
+      }
+    }
+    else Rf_error("cannot determine if node used or not.");
+  }
 
-  INTEGER(node_used)[affected_node] = INTEGER(node_used)[affected_node]*(-1);
-
-  UNPROTECT(5);
+  UNPROTECT(3);
   return z;
 }
 
@@ -459,8 +399,7 @@ SEXP import_col(SEXP col, SEXP dest, SEXP i, SEXP info) {
   R_xlen_t col_idx = (R_xlen_t)INTEGER(i)[0];
   col_idx -= 1;
 
-  SEXP node_used, max_num_nodes, dims2;
-  PROTECT(node_used      = VECTOR_ELT(info, 1));
+  SEXP max_num_nodes, dims2;
   PROTECT(max_num_nodes  = VECTOR_ELT(info, 3));
   PROTECT(dims2 = getAttrib(VECTOR_ELT(dest, INTEGER(max_num_nodes)[0]), 
     R_DimSymbol));
@@ -476,20 +415,12 @@ SEXP import_col(SEXP col, SEXP dest, SEXP i, SEXP info) {
       col_idx, ncols);
   }
 
-  for (int i=0; i<INTEGER(max_num_nodes)[0]; ++i) {
-    if (INTEGER(node_used)[i] > 0) {
-      float *flt_ptr = R_ExternalPtrAddr(VECTOR_ELT(dest, i));
-      for (R_xlen_t j = 0; j < nelem; ++j) {
-        flt_ptr[j+col_idx*nrows] = (float)REAL(col)[j];
-      }
-    }
-  }
   SEXP interl;
   PROTECT(interl = VECTOR_ELT(dest, INTEGER(max_num_nodes)[0]));
   for (R_xlen_t j = 0; j < nelem; ++j) {
     REAL(interl)[j+col_idx*nrows] = REAL(col)[j];
   }
 
-  UNPROTECT(5);
+  UNPROTECT(4);
   return dest;
 }

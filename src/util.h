@@ -52,7 +52,7 @@ static void finalize_singles_array_pointer(SEXP ext);
 SEXP extract_col(SEXP src, SEXP i);
 SEXP import_col(SEXP col, SEXP dest, SEXP i, SEXP info);
 
-SEXP alloc_z(SEXP a, SEXP b, SEXP x, SEXP info);
-SEXP retry_alloc_z(SEXP z, SEXP info);
+SEXP alloc_z_interleaved(SEXP a, SEXP b, SEXP x, SEXP info);
+SEXP alloc_z_float(SEXP z, SEXP info);
 
 #endif

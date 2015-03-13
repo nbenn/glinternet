@@ -28,7 +28,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
   if (verbose) time.alloc <- proc.time()  
   if (pCont > 0) {
-    Z = .Call("alloc_z", n, pCont, X, cpuNodeInfo)
+    Z = .Call("alloc_z_interleaved", n, pCont, X, cpuNodeInfo)
     for (i in 1:pCont) {
       vec = .Call("extract_col", X, i)
       if (length(unique(vec)) == 1) {
@@ -42,18 +42,16 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
   else Z = NULL
 
-  if(all(cpuNodeInfo$node_used >= 0)) {
-    if (verbose) cat("size of Z: ", format(object.size(Z), units="MB"), "\n")
-  }
-  else {
-    gcinfo(TRUE)
-    tempdir <- Sys.getenv("TMPDIR")
-    cat("saving x to ", paste(tempdir, "/originalX.rds\n", sep=""))
-    saveRDS(X, paste(tempdir, "/originalX.rds", sep=""), compress=FALSE)
-    rm(X)
-    gc()
-    .Call("retry_alloc_z", Z, cpuNodeInfo)
-  }
+  if (verbose) cat("size of Z: ", format(object.size(Z), units="MB"), "\n")
+
+  #gcinfo(TRUE)
+  tempdir <- Sys.getenv("TMPDIR")
+  cat("saving x to ", paste(tempdir, "/originalX.rds\n", sep=""))
+  saveRDS(X, paste(tempdir, "/originalX.rds", sep=""), compress=FALSE)
+  rm(X)
+  gc()
+  .Call("alloc_z_float", Z, cpuNodeInfo)
+
   if (verbose) {
     time.alloc <- proc.time() - time.alloc
     cat("-> time alloc: ", time.alloc[1], "(user)\n",
