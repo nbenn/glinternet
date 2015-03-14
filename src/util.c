@@ -133,7 +133,7 @@ SEXP get_cpu_node_usage() {
   return result;
 }
 
-/*void printmask(char *name, struct bitmask *mask) {
+void printmask(char *name, struct bitmask *mask) {
   int i;
 
   printf("%s: ", name);
@@ -141,7 +141,7 @@ SEXP get_cpu_node_usage() {
     if (numa_bitmask_isbitset(mask, i))
       printf("%d ", i);
   putchar('\n');
-}*/
+}
 
 void* custom_alloc(R_allocator_t *allocator, size_t size) {
   ((allocator_data*)allocator->data)->size = size;
@@ -164,7 +164,7 @@ void* custom_alloc(R_allocator_t *allocator, size_t size) {
       }
     }
     //Rprintf("\n");
-    //printmask("alloc interleaved among nodes", nodemask);
+    printmask("alloc interleaved among nodes", nodemask);
 
     orig_addr = numa_alloc_interleaved_subset(size+offset, nodemask);    
 
@@ -179,9 +179,10 @@ void* custom_alloc(R_allocator_t *allocator, size_t size) {
   }
   if (orig_addr == NULL) {
     Rf_error("could not allocate memory in custom_alloc");
+    Rf_error("attempted to allocate size %d on node %d", node, size+offset);
   }
   void* shifted_addr = (void*)((uintptr_t)orig_addr + offset);
-  //Rprintf("alloc on node %d: %p (%d)\n", node, orig_addr, size+offset);
+  Rprintf("alloc on node %d: %p (%d)\n", node, orig_addr, size+offset);
   return (void*) shifted_addr;
 }
 
@@ -189,7 +190,7 @@ void custom_free(R_allocator_t *allocator, void* shifted_addr) {
   size_t size = ((allocator_data*)allocator->data)->size;
   size_t offset = ((allocator_data*)allocator->data)->offset;
   void* orig_addr = (void*)((uintptr_t)shifted_addr-offset);
-  //Rprintf("freeing: %p (%d)\n", orig_addr, size+offset);
+  Rprintf("freeing: %p (%d)\n", orig_addr, size+offset);
   numa_free(orig_addr, size+offset);
 }
 
@@ -240,9 +241,9 @@ SEXP alloc(int alignment, R_xlen_t length, int node) {
 static void finalize_singles_array_pointer(SEXP ext) {
   if (NULL == R_ExternalPtrAddr(ext))
     return;
-  //Rprintf("finalizing singles array\n");
   float *ptr = (float *) R_ExternalPtrAddr(ext);
   double size = REAL(R_ExternalPtrTag(ext))[0];
+  Rprintf("freeing singles array: address %p, size %d\n", ptr, size);
   numa_free(ptr, (size_t)size);
   R_ClearExternalPtr(ext);
 }

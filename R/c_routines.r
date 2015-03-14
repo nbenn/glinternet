@@ -21,6 +21,7 @@ compute_norms_cat_cont = function(X, Z, catNorms, res, n, numLevels, indices, nu
 }
 
 compute_norms_cont_cont = function(Z, contNorms, res, n, indices, cpuInfo, verbose=FALSE){
+  gc()
   numInt = nrow(indices)
   #cat("numInt: ", numInt, "\n")
   #result = double(numInt)
